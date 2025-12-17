@@ -769,9 +769,10 @@ def write_items(path: str, items: List[Dict[str, str]]) -> None:
     Write items back out in the simple YAML-like format.
 
     Behavior:
-    - A blank line is written between each item block.
-    - Standalone comment entries are written directly adjacent to the following item
-      (no blank line between a comment and its associated item).
+    - A blank line is written between item blocks and before standalone comments
+      (except at the start of the file).
+    - Standalone comments appear directly adjacent to their following item with
+      no blank line in between.
     - Keys that appear in the parsed order ('_order') are written in that exact order,
       interleaved with comments. Then any remaining keys are appended using the global key order.
     - For Verification items, all keys in the global key order are written (some may be blank).
