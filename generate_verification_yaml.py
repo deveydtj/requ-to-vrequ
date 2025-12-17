@@ -38,6 +38,10 @@ BASE_KEY_ORDER = [
     "Type", "Parent_Req", "ID", "Name", "Text", "Verified_By", "Traced_To"
 ]
 
+# Compiled regex pattern for BRDG render issue detection
+# Matches "render", "renders", "rendered", "rendering" as whole words (case-insensitive)
+BRDG_RENDER_PATTERN = re.compile(r"\brender(?:s|ed|ing)?\b", re.IGNORECASE)
+
 # ---------------------------------------------------------------------------
 # Parsing
 # ---------------------------------------------------------------------------
@@ -580,10 +584,9 @@ def has_brdg_render_issue(ver_name: str, ver_text: str) -> bool:
         True if a whole-word "render", "renders", "rendered", or "rendering"
         is found (case-insensitive), False otherwise.
     """
-    pattern = re.compile(r"\brender(?:s|ed|ing)?\b", re.IGNORECASE)
     name_to_check = ver_name or ""
     text_to_check = ver_text or ""
-    return bool(pattern.search(name_to_check)) or bool(pattern.search(text_to_check))
+    return bool(BRDG_RENDER_PATTERN.search(name_to_check)) or bool(BRDG_RENDER_PATTERN.search(text_to_check))
 
 
 def generate_verification_items(items: List[Dict[str, str]]) -> List[Dict[str, str]]:

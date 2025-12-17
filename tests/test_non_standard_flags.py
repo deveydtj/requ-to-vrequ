@@ -141,6 +141,9 @@ def test_end_to_end():
         input_file = f.name
         f.write(test_yaml)
     
+    # Initialize output_file to None to avoid NameError in finally block
+    output_file = None
+    
     try:
         # Create temporary output file
         output_file = input_file.replace('.yaml', '_output.yaml')
@@ -209,11 +212,12 @@ def test_end_to_end():
         except OSError:
             # Ignore cleanup errors; the temporary input file may already have been removed.
             pass
-        try:
-            os.remove(output_file)
-        except OSError:
-            # Ignore cleanup errors; the temporary output file may already have been removed.
-            pass
+        if output_file is not None:
+            try:
+                os.remove(output_file)
+            except OSError:
+                # Ignore cleanup errors; the temporary output file may already have been removed.
+                pass
 
 
 def main():
