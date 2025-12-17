@@ -28,7 +28,6 @@ import re
 import os
 import tempfile
 from typing import List, Dict, Optional
-from xml.etree.ElementTree import SubElement
 
 # Base key order for output. Additional keys discovered in the file will be
 # appended after these in alphabetical order.
@@ -353,17 +352,17 @@ def transform_name_general(req_name: str) -> str:
       - Otherwise: 'Verify <Name>'
       """
     if req_name.startswith("Render "):
-         rest = req_name[len("Render "):].strip()
-         # Avoid double 'the' if the rest already begins with an article
-         if rest.startswith("the ") or rest.startswith("The "):
-             subject_phrase = rest
-             be = choose_be_verb(subject_phrase)
-             return f"Verify {rest} {be} rendered."
-         else:
-             # Include a space so the determiner is tokenized correctly.
-             subject_phrase = "the " + rest
-             be = choose_be_verb(subject_phrase)
-             return f"Verify the {rest} {be} rendered."
+        rest = req_name[len("Render "):].strip()
+        # Avoid double 'the' if the rest already begins with an article
+        if rest.startswith("the ") or rest.startswith("The "):
+            subject_phrase = rest
+            be = choose_be_verb(subject_phrase)
+            return f"Verify {rest} {be} rendered."
+        else:
+            # Include a space so the determiner is tokenized correctly.
+            subject_phrase = "the " + rest
+            be = choose_be_verb(subject_phrase)
+            return f"Verify the {rest} {be} rendered."
     return f"Verify {req_name}"
 
 
