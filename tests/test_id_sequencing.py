@@ -50,11 +50,11 @@ def test_basic_sequencing():
         items = parse_items(temp_path)
         id_map = build_id_sequence_map(items)
         
-        # Check that we have mappings (keys now include @INDEX)
-        assert len(id_map) > 0, "Should have some mappings"
+        # Check that we have exactly 2 mappings (for the two .X placeholders)
+        assert len(id_map) == 2, f"Should have 2 mappings, got {len(id_map)}"
         
         # Apply sequencing
-        sequenced_items = sequence_requirement_ids(items)
+        sequenced_items = sequence_requirement_ids(items, id_map)
         
         # Get IDs from sequenced items
         ids = [item.get("ID") for item in sequenced_items if item.get("ID", "").startswith("REQU.TEST.")]
@@ -296,10 +296,10 @@ def test_mixed_case_x():
         items = parse_items(temp_path)
         id_map = build_id_sequence_map(items)
         
-        # Should have mappings (with @INDEX keys)
-        assert len(id_map) > 0, "Should have some mappings"
+        # Should have exactly 2 mappings (for .X and .x)
+        assert len(id_map) == 2, f"Should have 2 mappings, got {len(id_map)}"
         
-        sequenced_items = sequence_requirement_ids(items)
+        sequenced_items = sequence_requirement_ids(items, id_map)
         ids = [item.get("ID") for item in sequenced_items if item.get("ID", "").startswith("REQU.TEST.")]
         
         # Should have .1, .2, .3

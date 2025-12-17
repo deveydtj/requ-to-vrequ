@@ -30,7 +30,7 @@ import argparse
 import re
 import os
 import tempfile
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 
 # Base key order for output. Additional keys discovered in the file will be
 # appended after these in alphabetical order.
@@ -524,7 +524,6 @@ def build_id_sequence_map(items: List[Dict[str, str]]) -> Dict[str, str]:
     
     # Track anchors and counters per (domain, stem)
     # Key: (domain, stem), Value: (anchor_number, next_sequence_number)
-    from typing import Tuple
     domain_stem_state: Dict[Tuple[str, str], Tuple[int, int]] = {}
     
     for idx, item in enumerate(items):
@@ -560,6 +559,7 @@ def build_id_sequence_map(items: List[Dict[str, str]]) -> Dict[str, str]:
             if key not in domain_stem_state:
                 domain_stem_state[key] = (num, num + 1)
             # If anchor exists but this is a different number, update next sequence if needed
+            # Note: The anchor (first numbered ID) remains constant; only next_sequence_number updates
             elif num >= domain_stem_state[key][1]:
                 anchor_num, _ = domain_stem_state[key]
                 domain_stem_state[key] = (anchor_num, num + 1)
@@ -614,10 +614,10 @@ def apply_id_sequence_patch(original_text: str, id_map: Dict[str, str]) -> str:
         # Detect start of new item (including standalone comments)
         stripped = line.lstrip()
         
-        # Standalone comment (not inside an item)
+        # Standalone comment before the first structured item
         # Note: Comments between structured items are NOT standalone items -
         # they're stored in the previous item's _order field by parse_items()
-        if not in_item and stripped.startswith("#"):
+        if item_index == -1 and stripped.startswith("#"):
             item_index += 1
             result.append(line)
             continue
@@ -651,7 +651,7 @@ def apply_id_sequence_patch(original_text: str, id_map: Dict[str, str]) -> str:
     return "\n".join(result)
 
 
-def sequence_requirement_ids(items: List[Dict[str, str]]) -> List[Dict[str, str]]:
+def sequence_requirement_ids(items: List[Dict[str, str]], id_map: Optional[Dict[str, str]] = None) -> List[Dict[str, str]]:
     """
     Apply ID sequencing to the structured items list.
     
@@ -659,12 +659,14 @@ def sequence_requirement_ids(items: List[Dict[str, str]]) -> List[Dict[str, str]
     
     Args:
         items: List of parsed item dictionaries
+        id_map: Optional pre-computed ID mapping. If None, will be computed.
         
     Returns:
         New list with sequenced IDs applied
     """
-    # Build the ID mapping
-    id_map = build_id_sequence_map(items)
+    # Build the ID mapping if not provided
+    if id_map is None:
+        id_map = build_id_sequence_map(items)
     
     if not id_map:
         return items
@@ -683,7 +685,9 @@ def sequence_requirement_ids(items: List[Dict[str, str]]) -> List[Dict[str, str]
         map_key = f"{req_id}@{idx}"
         
         if map_key in id_map:
-            # Create a copy and update the ID
+            # Create a shallow copy and update the ID
+            # Shallow copy is safe here because we only modify the ID field,
+            # and no other code will modify the _order list after this point
             updated_item = dict(item)
             updated_item["ID"] = id_map[map_key]
             result.append(updated_item)
@@ -1246,7 +1250,8 @@ def main() -> None:
     id_map = build_id_sequence_map(items)
 
     # 3) Apply sequencing to structured items (for verification generation)
-    sequenced_items = sequence_requirement_ids(items)
+    # Pass id_map to avoid rebuilding it
+    sequenced_items = sequence_requirement_ids(items, id_map)
 
     # 4) Read original text and apply ID sequencing patch
     with open(args.input_file, "r", encoding="utf-8") as f:
