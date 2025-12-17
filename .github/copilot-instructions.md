@@ -149,4 +149,5 @@ When extending the script:
 
 ## References
 
-- For authoring requirements and guidelines, refer to the internal "authoring requirements and guidelines" document mentioned in the script header
+- The script header references authoring requirements and guidelines that define the transformation rules
+- See `generate_verification_yaml.py` docstring for detailed transformation rules and examples
