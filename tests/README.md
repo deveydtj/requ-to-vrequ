@@ -57,7 +57,11 @@ Output:
 # FIX - Non-Standard Name
 
 - Type: DMGR Verification Requirement
+  Parent_Req:
   ID: VREQU.DMGR.TEST.1
   Name: Verify Display the status
-  Text: (U) Verify the system renders the status.
+  Text: |
+    (U) Verify the system renders the status.
+  Verified_By:
+  Traced_To:
 ```
