@@ -1,0 +1,957 @@
+#!/usr/bin/env python3
+"""
+Generate automated Verification entries from Requirement entries
+in a simple YAML-like file, without third-party libraries.
+
+This script is designed to satisfy the authoring rules described in the
+"authoring requirements and guidelines" document, including:
+
+- Recognizing Requirement items by Type (Requirement / requirement / req / requ / REQU)
+- Only processing Requirements whose ID starts with "REQU"
+- Applying special wording rules for IDs containing ".BRDG." (Bridge) or
+  ".DMGR." (Data Manager)
+- Case-sensitive handling of the tokens "Set", "to", "The", and "shall set"
+- Generating a Verification item with fields:
+  Type, Parent_Req, ID, Name, Text, Verified_By, Traced_To (if present)
+- Setting Parent_Req of the Verification to the Requirement ID
+- Copying Traced_To from the Requirement to the Verification (scalar only)
+- Preserving multiline values using YAML block scalar syntax (Key: |)
+- Capturing and re-emitting all comments in the original order, adjacent to
+  the related item blocks.
+
+USAGE:
+python generate_verification_yaml.py input.yaml output.yaml
+"""
+
+import argparse
+import re
+import os
+import tempfile
+from typing import List, Dict, Optional
+
+# Base key order for output. Additional keys discovered in the file will be
+# appended after these in alphabetical order.
+BASE_KEY_ORDER = [
+    "Type", "Parent_Req", "ID", "Name", "Text", "Verified_By", "Traced_To"
+]
+
+# ---------------------------------------------------------------------------
+# Parsing
+# ---------------------------------------------------------------------------
+
+
+def parse_items(path: str) -> List[Dict[str, str]]:
+    """
+    Very small YAML-like parser for the expected flat structure.
+
+    Supports:
+    - Top-level items beginning with '- '
+    - Key: Value pairs
+    - Multiline block scalars for any key: 'Key: |' or 'Key: |-'
+      with indentation-based termination rules.
+    - Captures any comment lines ('# ...') anywhere in the file:
+      * Outside items: stored as standalone entries with '_comment'
+      * Inside items (outside of block scalars): appended to the item's '_order'
+        to preserve relative position among keys.
+
+    Note: This is not a full YAML parser; it only supports what is needed
+    for these requirement / verification records.
+    """
+    with open(path, "r", encoding="utf-8") as f:
+        lines = f.readlines()
+
+    items: List[Dict[str, str]] = []
+    current: Optional[Dict[str, str]] = None
+    i = 0
+    n = len(lines)
+
+    while i < n:
+        raw_line = lines[i].rstrip("\n")
+
+        # Skip completely blank lines (preserved only within block scalars)
+        if not raw_line.strip():
+            i += 1
+            continue
+
+        stripped = raw_line.lstrip()
+
+        # Standalone comment (outside any current item)
+        if current is None and stripped.startswith("#"):
+            items.append({"_comment": raw_line})
+            i += 1
+            continue
+
+        # New item starts with "- "
+        if stripped.startswith("- "):
+            if current is not None:
+                items.append(current)
+            current = {"_order": []}
+            rest = stripped[2:].strip()
+            if rest and ":" in rest:
+                key, value = rest.split(":", 1)
+                key = key.strip()
+                val = value.strip()
+                current[key] = val
+                current["_order"].append(("key", key))
+            i += 1
+            continue
+
+        if current is None:
+            # Lines before the first "- " that are not comments are ignored
+            i += 1
+            continue
+
+        # Determine indentation and content after indentation
+        indent = len(raw_line) - len(raw_line.lstrip(" "))
+        content = raw_line[indent:]
+
+        # Handle "Key: ..." with optional block scalar indicator generically
+        if ":" in content:
+            key, value = content.split(":", 1)
+            key = key.strip()
+            after = value.lstrip()
+
+            # Multiline block scalar (supports any key): "Key: |" or "Key: |-"
+            if after in ("|", "|-"):
+                block_lines: List[str] = []
+                indent_base = indent
+                i += 1
+                while i < n:
+                    nxt_raw = lines[i].rstrip("\n")
+                    nxt_stripped = nxt_raw.strip()
+
+                    # Preserve completely blank lines inside the block
+                    if nxt_stripped == "":
+                        block_lines.append("")
+                        i += 1
+                        continue
+
+                    nxt_indent = len(nxt_raw) - len(nxt_raw.lstrip(" "))
+                    nxt_content = nxt_raw[nxt_indent:]
+
+                    # New item? Only if '- ' appears at the same or less indent
+                    # as the key line (i.e., a top-level list item).
+                    if nxt_indent <= indent_base and nxt_content.startswith("- "):
+                        break
+
+                    # New key at same or less indent (e.g., " Name: ...")
+                    if nxt_indent <= indent_base and ":" in nxt_content:
+                        break
+
+                    # Otherwise this is part of the block content
+                    block_indent = indent_base + 2
+                    if nxt_indent >= block_indent:
+                        block_lines.append(nxt_raw[block_indent:])
+                    else:
+                        block_lines.append(nxt_raw.lstrip())
+
+                    i += 1
+
+                current[key] = "\n".join(block_lines)
+                current["_order"].append(("key", key))
+
+                # Maintain existing behavior: mark only Text as coming from a block scalar
+                if key == "Text":
+                    current["_Text_block"] = True
+
+                continue
+
+            # Single-line value; split inline comments from the value
+            # Detect an inline comment '#' anywhere in the raw line after the colon
+            hash_idx_in_raw = raw_line.find("#")
+            if hash_idx_in_raw != -1:
+                # Compute where the value starts within the raw line
+                colon_idx_in_raw = raw_line.find(":")
+                # Value portion is the substring after the colon up to the hash
+                value_part = raw_line[colon_idx_in_raw +
+                    1:hash_idx_in_raw].strip()
+                # preserve original indentation/content
+                comment_part = raw_line[hash_idx_in_raw:]
+                current[key] = value_part
+                current["_order"].append(("key", key))
+                current["_order"].append(("comment", comment_part))
+            else:
+                current[key] = after
+                current["_order"].append(("key", key))
+
+            if key == "Text":
+                current["_Text_block"] = False
+
+            i += 1
+            continue
+
+        # Comment line (outside of block scalars): capture and preserve in-item order
+        if stripped.startswith("#"):
+            current["_order"].append(("comment", raw_line))
+            i += 1
+            continue
+
+        # If we get here, increment to avoid infinite loop
+        i += 1
+
+    if current is not None:
+        items.append(current)
+
+    return items
+
+# ---------------------------------------------------------------------------
+# Transformation helpers
+# ---------------------------------------------------------------------------
+
+
+def split_leading_classification(s: str) -> tuple[str, str]:
+    """
+    If the string begins with one or more parenthetical classification tags,
+    return (prefix_with_space_preserved, remainder_without_leading_spaces),
+    otherwise return ("", s).
+    """
+    m = re.match(r"^(\s*(?:\([^)]+\)\s*)+)(.*)$", s)
+    if not m:
+        return "", s
+    prefix = m.group(1)
+    remainder = m.group(2).lstrip()
+    return prefix, remainder
+
+
+def generate_verification_id(req_id: str) -> str:
+    """
+    Generate a Verification ID from a Requirement ID.
+
+    Examples:
+    REQU.DIS.UI.1 -> VREQU.DIS.UI.1
+    REQU.DMGR.STATE.2.DMGR.MODE -> VREQU.DMGR.STATE.2.DMGR.MODE
+    """
+    req_id = req_id.strip()
+    if req_id.startswith("REQ"):
+        return "V" + req_id
+    return "V" + req_id
+
+
+def has_standalone_set(name: str) -> bool:
+    """
+    Return True if the Name contains the standalone token 'Set'
+    (case-sensitive, word boundary).
+    """
+    return re.search(r"\bSet\b", name) is not None
+
+
+def is_plural_subject_phrase(phrase: str) -> bool:
+    """
+    Minimal plurality heuristic (purposefully lightweight, no NLP dependencies):
+    - If the phrase includes a coordination ('and'/'or') or a comma list, treat as plural.
+    - If it begins with a numeric count, treat >1 as plural.
+    - Otherwise, pick a likely "head" token near the end of the phrase and decide plural
+      based on simple morphology.
+
+    Important: tokens inside quotes must NOT influence plurality detection.
+    """
+    if not phrase:
+        return False
+
+    def _strip_quoted(text: str) -> str:
+        """Remove quoted substrings so quoted tokens don't affect plurality."""
+        # Double-quoted segments (supports simple escaped quotes)
+        text = re.sub(r'"[^"\\]*(?:\\.[^"\\]*)*"', " ", text)
+        # Single-quoted segments (supports simple escaped quotes)
+        text = re.sub(r"'[^'\\]*(?:\\.[^'\\]*)*'", " ", text)
+        return text
+
+    p = _strip_quoted(phrase.strip())
+    p_low = p.lower()
+
+    # Lists and coordination are strong signals of plurality
+    if "," in p_low:
+        return True
+    if re.search(r"\b(and|or)\b", p_low):
+        return True
+
+    # Leading numeric count
+    m_num = re.match(r"^(\d+)\b", p_low)
+    if m_num:
+        try:
+            return int(m_num.group(1)) != 1
+        except ValueError:
+            pass
+
+    tokens = re.findall(r"[a-z0-9']+", p_low)
+    if not tokens:
+        return False
+
+    determiners = {"the", "a", "an", "this", "that"}
+    idx = 0
+    while idx < len(tokens) and tokens[idx] in determiners:
+        idx += 1
+    if idx >= len(tokens):
+        return False
+
+    # Choose a head-ish token from the end, skipping common trailing stopwords.
+    stopwords = {
+        # articles/determiners
+        "the", "a", "an", "this", "that", "these", "those",
+        # coordination
+        "and", "or",
+        # common prepositions/conjunctions
+        "in", "on", "at", "to", "from", "with", "without", "by", "for", "of", "as",
+        "into", "onto", "over", "under", "between", "within", "across", "through",
+        # common trailing adverbs
+        "here", "there",
+    }
+
+    head = None
+    for t in reversed(tokens[idx:]):
+        if t in stopwords:
+            continue
+        head = t
+        break
+
+    if not head:
+        return False
+
+    # Common singular nouns ending in 's' (avoid obvious false pluralization)
+    singular_s_endings = {
+        "status", "news", "chassis",
+    }
+    if head in singular_s_endings:
+        return False
+
+    # Simple morphological checks
+    if head.endswith("ies"):          # e.g., "policies" -> plural
+        return True
+    if head.endswith("s") and not head.endswith("ss"):
+        return True
+
+    return False
+
+
+def choose_be_verb(phrase: str) -> str:
+    """Return 'are' if the phrase looks plural, otherwise 'is'."""
+    return "are" if is_plural_subject_phrase(phrase) else "is"
+
+
+def choose_present_verb(base_verb: str, phrase: str) -> str:
+    """
+    Return the correct present-tense verb form for the given phrase:
+    - Singular subject => 'renders'
+    - Plural subject   => 'render'
+    Works for 'render'; for other verbs, supply their singular 'verb+s' form if needed.
+    """
+    plural = is_plural_subject_phrase(phrase)
+    if base_verb == "render":
+        return "render" if plural else "renders"
+    # Fallback: default singular adds 's'
+    return base_verb if plural else (base_verb + "s")
+
+
+def transform_name_general(req_name: str) -> str:
+    """
+      General behavior (non-setting semantics):
+
+      - If the Name begins with 'Render ', convert to passive and prefix with 'Verify' or 'Verify the ':
+        'Render X in Y' -> 'Verify the X in Y is rendered.'
+        If X already begins with 'the ' or 'The ', do not add an extra 'the'.
+      - Otherwise: 'Verify <Name>'
+      """
+    if req_name.startswith("Render "):
+        rest = req_name[len("Render "):].strip()
+        # Avoid double 'the' if the rest already begins with an article
+        if rest.startswith("the ") or rest.startswith("The "):
+            subject_phrase = rest
+            be = choose_be_verb(subject_phrase)
+            return f"Verify {rest} {be} rendered."
+        else:
+            # Include a space so the determiner is tokenized correctly.
+            subject_phrase = "the " + rest
+            be = choose_be_verb(subject_phrase)
+            return f"Verify the {rest} {be} rendered."
+    return f"Verify {req_name}"
+
+
+def transform_name_setting(req_name: str) -> str:
+    """
+    Setting semantics for Requirements whose Name contains 'Set' as a standalone word.
+
+    Rules:
+    - If the Name begins with 'Set ', remove that leading token.
+    - Replace the last standalone 'to' with '<is/are> set to' depending on plurality.
+    - If there is no standalone 'to', append '<is/are> set' at the end depending on plurality.
+    - Prefix with 'Verify the ' unless the base already begins with 'The ' or 'the '.
+    """
+    base = req_name
+
+    # Remove leading 'Set ' if present (case-sensitive)
+    if base.startswith("Set "):
+        base = base[len("Set "):]
+
+    be = choose_be_verb(base)
+
+    # Find the last standalone 'to' (case-sensitive, word boundary)
+    matches = list(re.finditer(r"\bto\b", base))
+    if matches:
+        start, end = matches[-1].span()
+        new_base = base[:start] + f"{be} set to" + base[end:]
+    else:
+        new_base = base + f" {be} set"
+
+    # Prefix with 'Verify the ', unless the base already starts with 'The ' or 'the '
+    prefix = "Verify the "
+    if base.startswith("The ") or base.startswith("the "):
+        prefix = "Verify "
+
+    return (prefix + new_base.strip())
+
+
+def extract_subject_phrase(line: str) -> str:
+    """
+    Extract the likely subject phrase from the first line by removing any leading
+    classification tags '(...)', then removing a leading article ('The'/'the'),
+    and taking everything up to the first modal/aux verb ('shall', 'is', 'are', 'will', 'must', 'should').
+    """
+    s = line.strip()
+    # Strip leading classification tags
+    _, s = split_leading_classification(s)
+
+    # Remove leading 'The ' / 'the '
+    if s.startswith("The "):
+        s = s[4:]
+    elif s.startswith("the "):
+        s = s[4:]
+
+    m = re.search(r"\b(shall|is|are|will|must|should)\b", s)
+    return s[:m.start()].strip() if m else s
+
+
+def transform_text(req_text: str, is_advanced: bool, is_setting: bool) -> str:
+    """
+    Transform Requirement Text into Verification Text.
+
+    General rules:
+    - If the first line begins with classification tags '(...)', keep them at the front,
+      then insert 'Verify ' after them.
+    - If the remainder begins with 'The ', rewrite as 'Verify the ...'.
+      If it begins with 'Verify ', keep it.
+      Otherwise, prefix with 'Verify '.
+    - Plurality is determined from the remainder (ignoring classification prefix).
+
+    Verb normalization:
+    - Replace 'shall render' with 'render/renders' depending on subject plurality.
+    - For advanced (.BRDG./.DMGR.) setting semantics, and when applicable,
+      replace 'shall set' or 'shall set to' with 'is/are set' or 'is/are set to'.
+    """
+    if not req_text:
+        return "Verify that the requirement is satisfied."
+
+    lines = req_text.split("\n")
+    first = lines[0]
+
+    # Split out any leading classification prefix, and determine subject plurality from remainder
+    class_prefix, remainder = split_leading_classification(first)
+    subject_phrase = extract_subject_phrase(remainder)
+    be = choose_be_verb(subject_phrase)
+    render_present = choose_present_verb("render", subject_phrase)
+
+    # Build the rewritten first line
+    # Normalize first-word article capitalization after 'Verify'
+    if remainder.startswith("The "):
+        new_remainder = "Verify the " + remainder[len("The "):]
+    elif remainder.startswith("Verify "):
+        new_remainder = remainder
+    else:
+        # Also handle 'the ' (already lowercase) gracefully
+        if remainder.startswith("the "):
+            new_remainder = "Verify " + remainder
+        else:
+            new_remainder = "Verify " + remainder
+
+    if class_prefix:
+        # Ensure exactly one space between the classification and the rewritten remainder
+        lines[0] = class_prefix.rstrip() + " " + new_remainder
+    else:
+        lines[0] = new_remainder
+
+    joined = "\n".join(lines)
+
+    # Normalize 'shall render' -> 'render'/'renders' (active voice)
+    if "shall render" in req_text:
+        joined = joined.replace("shall render", render_present)
+
+    # Advanced Bridge / DMGR + setting semantics
+    if is_advanced and is_setting:
+        # Handle 'shall set to' first to avoid 'to to' duplication
+        if "shall set to" in req_text:
+            joined = joined.replace("shall set to", f"{be} set to")
+        elif "shall set" in req_text:
+            joined = joined.replace("shall set", f"{be} set")
+
+    return joined
+
+
+# ---------------------------------------------------------------------------
+# Verification generation
+# ---------------------------------------------------------------------------
+
+def generate_verification_items(items: List[Dict[str, str]]) -> List[Dict[str, str]]:
+    """
+    For each Requirement item that matches the scope rules, generate a
+    corresponding Verification item and update the Requirement's Verified_By.
+
+    Scope rules:
+    - Type must be exactly one of: Requirement, requirement, req, requ, REQU
+    - ID must start with 'REQU'
+
+    Bridge / DMGR identification:
+    - If '.BRDG.' is in the ID, Bridge rules are enabled.
+    - If '.DMGR.' is in the ID, Data Manager rules are enabled.
+
+    Name & Text transformations follow the authoring guidelines:
+    - Non-setting: 'Verify <Name>', and Text with 'Verify the' or 'Verify '.
+    - Setting semantics: special wording for Name and 'shall set' -> 'sets' in Text
+      when applicable.
+
+    Parent_Req and Traced_To:
+    - Verification.Parent_Req is set to the Requirement ID.
+    - If Requirement.Traced_To is present, it is copied as-is to the
+      Verification (scalar only in this script).
+    """
+    result: List[Dict[str, str]] = []
+    ver_items: List[Dict[str, str]] = []
+
+    for item in items:
+        # Pass through standalone comments untouched
+        if "_comment" in item and len(item) == 1:
+            result.append(item)
+            continue
+
+        item_type = item.get("Type", "").strip()
+
+        # Recognize Requirement types per spec (case-sensitive)
+        if item_type not in {"Requirement", "requirement", "req", "requ", "REQU"}:
+            result.append(item)
+            continue
+
+        req_id = item.get("ID", "").strip()
+        if not req_id.startswith("REQU"):
+            # Only REQU.* IDs are in scope
+            result.append(item)
+            continue
+
+        req_name = item.get("Name", "")
+        req_text = item.get("Text", "")
+
+        is_brdg = ".BRDG." in req_id
+        is_dmgr = ".DMGR." in req_id
+        is_advanced = is_brdg or is_dmgr
+
+        # Setting semantics if Name contains 'Set' as a standalone word
+        is_setting = has_standalone_set(req_name)
+
+        ver_id = generate_verification_id(req_id)
+
+        # --- Update the Requirement itself (set Verified_By) ---
+        updated_req = dict(item)  # shallow copy to preserve other fields
+        updated_req["Verified_By"] = ver_id
+        result.append(updated_req)
+
+        # --- Create the Verification item ---
+        ver_item: Dict[str, str] = {}
+
+        ver_item["Type"] = "Verification"
+        ver_item["Parent_Req"] = req_id
+        ver_item["ID"] = ver_id
+
+        # Name transformation
+        if is_setting:
+            ver_item["Name"] = transform_name_setting(req_name)
+        else:
+            ver_item["Name"] = transform_name_general(req_name)
+
+        # Text transformation
+        ver_item["Text"] = transform_text(
+            req_text,
+            is_advanced=is_advanced,
+            is_setting=is_setting,
+        )
+
+        # Verified_By starts empty for the Verification
+        ver_item["Verified_By"] = ""
+
+        # Copy Traced_To exactly if present (scalar-only support)
+        if "Traced_To" in item:
+            ver_item["Traced_To"] = item["Traced_To"]
+
+        # Preserve the fact that Text was a block scalar so we can rewrite it
+        if "_Text_block" in item:
+            ver_item["_Text_block"] = item["_Text_block"]
+
+        ver_items.append(ver_item)
+
+    # Append all generated Verifications at the bottom
+    result.extend(ver_items)
+    return result
+
+# ---------------------------------------------------------------------------
+# Output
+# ---------------------------------------------------------------------------
+
+
+def build_global_key_order(items: List[Dict[str, str]]) -> List[str]:
+    """
+    Build a global key order for output:
+
+    - Start with BASE_KEY_ORDER
+    - Append any additional keys found across all items (except
+      internal keys starting with '_'), sorted alphabetically.
+    """
+    all_keys = set()
+    for item in items:
+        for key in item.keys():
+            if not key.startswith("_"):
+                all_keys.add(key)
+
+    key_order: List[str] = BASE_KEY_ORDER.copy()
+    extra_keys = sorted(k for k in all_keys if k not in key_order)
+    key_order.extend(extra_keys)
+    return key_order
+
+
+def write_items(path: str, items: List[Dict[str, str]]) -> None:
+    """
+    Write items back out in the simple YAML-like format.
+
+    Behavior:
+    - A blank line is written between each item block.
+    - Keys that appear in the parsed order ('_order') are written in that exact order,
+      interleaved with comments. Then any remaining keys are appended using the global key order.
+    - For Verification items, all keys in the global key order are written (some may be blank).
+    - For non-Verification items, only keys actually present are written.
+    - If any key's value is multiline, it is written back out using 'Key: |'
+      with the content indented by 2 spaces more than the key indentation.
+
+    Indentation:
+    - Keys under '- Type:' are indented by 2 spaces.
+    - Multiline block lines are indented by 4 spaces (2 more than the key line).
+
+    Comments:
+    - Standalone comment entries (dicts with '_comment') are written as-is in place.
+    - In-item comments recorded in '_order' are emitted in the same relative position.
+    """
+    key_order = build_global_key_order(items)
+
+    def write_key_value(f, key: str, value: str) -> None:
+        if isinstance(value, str) and "\n" in value:
+            f.write(f"  {key}: |\n")
+            for line in value.split("\n"):
+                f.write(f"    {line}\n")
+        else:
+            f.write(f"  {key}: {value}\n")
+
+    with open(path, "w", encoding="utf-8") as f:
+        first_block = True
+
+        for item in items:
+            # Standalone comment entry: write exactly as it appeared
+            if "_comment" in item and len(item) == 1:
+                if not first_block:
+                    f.write("\n")
+                first_block = False
+                f.write(f"{item['_comment']}\n")
+                continue
+
+            if not first_block:
+                f.write("\n")
+            first_block = False
+
+            item_type = item.get("Type", "")
+            is_verification = (item_type == "Verification")
+
+            # Top-level item marker
+            f.write(f"- Type: {item_type}\n")
+
+            # Emit keys/comments in the parsed order if available
+            emitted_keys = set()
+            order = item.get("_order", [])
+
+            if order:
+                for kind, payload in order:
+                    if kind == "comment":
+                        # Write the comment line as-is to preserve formatting
+                        f.write(f"{payload}\n")
+                    elif kind == "key":
+                        key = payload
+                        if key == "Type" or key.startswith("_"):
+                            continue
+                        if key not in item:
+                            continue
+                        write_key_value(f, key, item.get(key, ""))
+                        emitted_keys.add(key)
+
+            # Emit remaining keys
+            for key in key_order:
+                if key == "Type" or key.startswith("_"):
+                    continue
+                # For non-Verification items, only write keys that actually exist
+                if not is_verification and key not in item:
+                    continue
+                if key in emitted_keys:
+                    continue
+                write_key_value(f, key, item.get(key, ""))
+
+
+def render_items_to_string(items: List[Dict[str, str]]) -> str:
+    """Render a list of items to the YAML-like text format used by this script.
+
+    This helper uses write_items() on a temporary file and returns its contents
+    so that the caller can append the rendered items to an existing file
+    without re-emitting the original requirements section.
+    """
+    if not items:
+        return ""
+    tmp_path: Optional[str] = None
+    try:
+        tmp = tempfile.NamedTemporaryFile("w+", delete=False, encoding="utf-8")
+        tmp_path = tmp.name
+        tmp.close()
+        write_items(tmp_path, items)
+        with open(tmp_path, "r", encoding="utf-8") as f:
+            return f.read().rstrip("\n")
+    finally:
+        if tmp_path is not None and os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                # Best-effort cleanup; ignore failure
+                pass
+
+
+def apply_verified_by_patch(original_text: str, req_verified_map: Dict[str, str]) -> str:
+    """
+    Update the Verified_By field for in-scope Requirement items directly in the
+    original text, with minimal disturbance to formatting and comments.
+
+    We:
+    - Detect top-level items that start with "- Type: ...".
+    - Track the Requirement ID for items whose Type is one of the recognized
+      Requirement types and whose ID starts with "REQU".
+    - For those, either replace an existing "Verified_By:" line or insert a new
+      one near the other key/value lines.
+
+    This avoids re-writing the whole file via write_items(), which can move
+    comments, while still guaranteeing that each Requirement has an up-to-date
+    Verified_By value.
+    """
+    if not req_verified_map:
+        return original_text
+
+    lines = original_text.splitlines()
+    result: List[str] = []
+
+    in_item = False
+    item_lines: List[str] = []
+    current_type: Optional[str] = None
+    current_req_id: Optional[str] = None
+
+    def flush_item():
+        nonlocal item_lines, current_type, current_req_id, in_item
+        if not in_item:
+            return
+        # Only patch Requirement items that have a mapping entry
+        if (
+            current_type in {"Requirement",
+                "requirement", "req", "requ", "REQU"}
+            and current_req_id
+            and current_req_id in req_verified_map
+        ):
+            ver_id = req_verified_map[current_req_id]
+
+            # --- Patch this block's Verified_By line(s) ---
+            patched: List[str] = []
+            has_verified_by = False
+
+            # Some heuristics for where to insert if missing
+            last_key_index = -1
+            text_key_index = -1
+            name_key_index = -1
+
+            # First pass: we just scan and patch/remember positions
+            for idx, line in enumerate(item_lines):
+                stripped = line.lstrip()
+
+                # Top-level "- Type: ..." line is always kept as-is
+                if idx == 0:
+                    patched.append(line)
+                    continue
+
+                # Existing Verified_By: line -> replace value
+                m_ver = re.match(r"^(\s*)Verified_By\s*:", line)
+                if m_ver:
+                    indent = m_ver.group(1)
+                    patched.append(f"{indent}Verified_By: {ver_id}")
+                    has_verified_by = True
+                    continue
+
+                # Track positions of other keys for insertion ordering
+                # We only look at simple "Key: value" patterns at this level.
+                m_key = re.match(r"^(\s*)([A-Za-z0-9_]+)\s*:", line)
+                if m_key:
+                    key_indent, key_name = m_key.group(1), m_key.group(2)
+                    last_key_index = len(patched)
+                    if key_name == "Text":
+                        text_key_index = len(patched)
+                    elif key_name == "Name":
+                        name_key_index = len(patched)
+
+                patched.append(line)
+
+            if not has_verified_by:
+                # Compute indentation: prefer Text's indent, then Name's, then a default
+                indent = "  "
+                if text_key_index != -1:
+                    m = re.match(r"^(\s*)", patched[text_key_index])
+                    if m:
+                        indent = m.group(1) or indent
+                elif name_key_index != -1:
+                    m = re.match(r"^(\s*)", patched[name_key_index])
+                    if m:
+                        indent = m.group(1) or indent
+                elif last_key_index != -1:
+                    m = re.match(r"^(\s*)", patched[last_key_index])
+                    if m:
+                        indent = m.group(1) or indent
+
+                insert_line = f"{indent}Verified_By: {ver_id}"
+
+                # Insert after Text if we saw it, else after the last key, else after '- Type' line
+                if text_key_index != -1:
+                    insert_at = text_key_index + 1
+                elif last_key_index != -1:
+                    insert_at = last_key_index + 1
+                else:
+                    insert_at = 1  # just after the '- Type:' line
+
+                if insert_at > len(patched):
+                    patched.append(insert_line)
+                else:
+                    patched.insert(insert_at, insert_line)
+
+            result.extend(patched)
+        else:
+            # Not a Requirement in scope; just copy block as-is
+            result.extend(item_lines)
+
+        # Reset state
+        in_item = False
+        item_lines = []
+        current_type = None
+        current_req_id = None
+
+    for line in lines:
+        # Detect top-level item start
+        if line.startswith("- Type: "):
+            # Flush previous block if any
+            if in_item:
+                flush_item()
+            in_item = True
+            item_lines = [line]
+            # Parse the item type from "- Type: FOO"
+            current_type = line[len("- Type: "):].strip()
+            current_req_id = None
+            continue
+
+        if in_item:
+            item_lines.append(line)
+            stripped = line.lstrip()
+            # Look for the ID line (e.g., "  ID: REQU.DIS.UI...")
+            if stripped.startswith("ID:"):
+                req_id_val = stripped[len("ID:"):].strip()
+                current_req_id = req_id_val
+            continue
+
+        # Not inside an item; passthrough
+        result.append(line)
+
+    # Flush the last item if file ended while inside it
+    if in_item:
+        flush_item()
+
+    return "\n".join(result)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Generate Verification entries from Requirement entries in a YAML-like file."
+    )
+    parser.add_argument(
+        "input_file", help="Path to input YAML-like requirements file.")
+    parser.add_argument("output_file", help="Path to output YAML-like file.")
+    args = parser.parse_args()
+
+    # Parse the input file for structured items (Requirements + any existing
+    # Verification items).
+    items = parse_items(args.input_file)
+
+    # Let the existing logic build updated Requirement items (with Verified_By)
+    # plus all generated Verification items.
+    items_with_verifications = generate_verification_items(items)
+
+    # Build a map of Requirement ID -> Verified_By (Verification ID)
+    req_verified_map: Dict[str, str] = {}
+    for item in items_with_verifications:
+        item_type = item.get("Type", "").strip()
+        if item_type not in {"Requirement", "requirement", "req", "requ", "REQU"}:
+            continue
+        req_id = item.get("ID", "").strip()
+        if not req_id.startswith("REQU"):
+            continue
+        ver_id = item.get("Verified_By", "").strip()
+        if ver_id:
+            req_verified_map[req_id] = ver_id
+
+    # Collect IDs of any existing Verification items so we don't duplicate them
+    # if the script is run multiple times.
+    existing_ver_ids = {
+        item.get("ID", "").strip()
+        for item in items
+        if item.get("Type", "").strip() == "Verification"
+    }
+
+    # Filter out only the *new* Verification items that were created by
+    # generate_verification_items (i.e., those whose ID does not already
+    # exist in the original file).
+    new_ver_items: List[Dict[str, str]] = []
+    for item in items_with_verifications:
+        if item.get("Type", "").strip() != "Verification":
+            continue
+        ver_id = item.get("ID", "").strip()
+        if not ver_id or ver_id in existing_ver_ids:
+            continue
+        new_ver_items.append(item)
+
+    # Read the original file content so we can preserve all comments and
+    # formatting, only touching the Verified_By fields and appending new
+    # Verification blocks at the end.
+    with open(args.input_file, "r", encoding="utf-8") as f:
+        original_text = f.read()
+
+    # First, update Verified_By in the requirements section.
+    updated_text = apply_verified_by_patch(original_text, req_verified_map)
+
+    # If there are no new Verification items to add, we're done after updating
+    # the Verified_By fields in-place.
+    if not new_ver_items:
+        with open(args.output_file, "w", encoding="utf-8") as f:
+            f.write(updated_text)
+        return
+
+    # Otherwise, render only the new Verification items and append them.
+    extra_text = render_items_to_string(new_ver_items)
+
+    with open(args.output_file, "w", encoding="utf-8") as f:
+        # Preserve the original content (with updated Verified_By) exactly,
+        # then add a blank line and the new Verification section.
+        f.write(updated_text.rstrip("\n"))
+        f.write("\n\n")
+        f.write(extra_text)
+        f.write("\n")
+
+
+if __name__ == "__main__":
+    main()
