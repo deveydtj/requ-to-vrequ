@@ -55,7 +55,7 @@ Requirements are classified by their ID patterns:
 
 **Name Transformations:**
 - **Non-setting semantics:** Prefix with "Verify"
-  - Special case for "Render X": Converts to "Verify the X is/are rendered."
+  - Special case for "Render X": Converts to "Verify the X is/are rendered." (adds "the" unless X already starts with "the"/"The")
 - **Setting semantics** (when Name contains standalone word "Set"):
   - Remove leading "Set " if present
   - Replace last standalone "to" with "is/are set to" (plurality-aware)
@@ -90,7 +90,7 @@ Requirements are classified by their ID patterns:
    - Ignores quoted text
    - Uses morphological heuristics
 
-3. **ID Detection:** Requirements are identified by IDs starting with "REQU" (case-sensitive)
+3. **ID Detection:** Requirements are identified by IDs starting with "REQU" (case-sensitive), including "REQU" itself or "REQU." prefixes
 
 4. **Formatting Preservation:** 
    - Uses `apply_verified_by_patch()` to update existing Requirements in-place
