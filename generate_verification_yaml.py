@@ -496,8 +496,8 @@ def is_requirement_id(req_id: str) -> bool:
     """
     Return True if the given ID represents a Requirement.
     
-    A valid Requirement ID starts with "REQU." or "REQU" (for edge cases
-    where the ID might be exactly "REQU").
+    A valid Requirement ID starts with "REQU" (case-sensitive).
+    This includes IDs like "REQU.DMGR.TEST.1", "REQU.BRDG.X", or even "REQU".
     """
     req_id = req_id.strip()
     return req_id.startswith("REQU")
@@ -837,12 +837,6 @@ def apply_verified_by_patch(original_text: str, req_verified_map: Dict[str, str]
                         name_key_index = len(patched)
 
                 patched.append(line)
-                
-                # After appending each line, update last_key_index if this isn't just whitespace
-                # or part of a block - this way last_key_index points to after all content
-                if stripped and not stripped.startswith("#"):
-                    # This is actual content, so the position after this could be a good insertion point
-                    pass
 
             if not has_verified_by:
                 # Compute indentation: prefer Name's indent, then last key's, then a default
@@ -858,13 +852,8 @@ def apply_verified_by_patch(original_text: str, req_verified_map: Dict[str, str]
 
                 insert_line = f"{indent}Verified_By: {ver_id}"
 
-                # Insert at the end of the item (after last_key_index)
-                # This ensures we don't break multiline blocks
+                # Insert at the end of the item to avoid breaking multiline blocks
                 if last_key_index != -1:
-                    insert_at = last_key_index + 1
-                    # But we need to skip past any content that belongs to the last key
-                    # (like block scalar content). Find the actual end of content.
-                    # Since we already added everything to patched, just append at the end
                     patched.append(insert_line)
                 else:
                     # No keys found, insert after '- Type:' line
