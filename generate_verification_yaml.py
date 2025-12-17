@@ -718,7 +718,9 @@ def generate_verification_items(items: List[Dict[str, str]]) -> List[Dict[str, s
         if domain == "BRDG" and has_brdg_render_issue(ver_item["Name"], ver_item["Text"]):
             # Insert comment entry before this Verification item.
             # If there is an immediately preceding non-standard comment for this
-            # verification, combine it into a single, prioritized comment.
+            # verification (added at line 681), combine it into a single, prioritized comment.
+            # Note: This is safe because nothing else is added to ver_items between
+            # the non-standard comment insertion (line 681) and this check.
             combined_comment = "# FIX - BRDG must not render"
             if ver_items and isinstance(ver_items[-1], dict) and "_comment" in ver_items[-1]:
                 last_comment = ver_items[-1].get("_comment", "")
