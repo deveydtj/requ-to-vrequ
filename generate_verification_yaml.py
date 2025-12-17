@@ -1267,7 +1267,6 @@ def main() -> None:
         # Skip sequencing: use original items as-is
         id_map = {}
         sequenced_items = items
-        original_text = None  # Will be read later only if needed
     else:
         # Compute ID sequence mapping for placeholder IDs (.X/.x)
         id_map = build_id_sequence_map(items)
@@ -1285,7 +1284,6 @@ def main() -> None:
         # Apply sequencing to structured items (for verification generation)
         # Pass id_map to avoid rebuilding it
         sequenced_items = sequence_requirement_ids(items, id_map)
-        original_text = None  # Will be read later
 
     # 3) Read original text (needed for both sequenced and non-sequenced paths)
     with open(args.input_file, "r", encoding="utf-8") as f:
