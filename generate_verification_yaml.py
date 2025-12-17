@@ -38,6 +38,10 @@ BASE_KEY_ORDER = [
     "Type", "Parent_Req", "ID", "Name", "Text", "Verified_By", "Traced_To"
 ]
 
+# Compiled regex pattern for BRDG render issue detection
+# Matches "render", "renders", "rendered", "rendering" as whole words (case-insensitive)
+BRDG_RENDER_PATTERN = re.compile(r"\brender(?:s|ed|ing)?\b", re.IGNORECASE)
+
 # ---------------------------------------------------------------------------
 # Parsing
 # ---------------------------------------------------------------------------
@@ -521,6 +525,70 @@ def classify_domain(req_id: str) -> str:
         return "OTHER"
 
 
+def is_standard_name(req_name: str) -> bool:
+    """
+    Check if a Requirement Name follows standard formatting.
+    
+    A standard Name starts with "Render " or "Set " (case-sensitive).
+    
+    Returns:
+    - True if the Name starts with "Render " or "Set "
+    - False otherwise
+    """
+    req_name = req_name.strip()
+    return req_name.startswith("Render ") or req_name.startswith("Set ")
+
+
+def is_standard_text(req_text: str, domain: str) -> bool:
+    """
+    Check if a Requirement Text follows domain-specific standard formatting.
+    
+    Domain-specific standards:
+    - DMGR: Text should contain "shall render"
+    - BRDG: Text should contain "shall set"
+    - OTHER: No specific Text standard required, but text must be non-empty
+    
+    Empty text is always considered non-standard regardless of domain.
+    
+    Args:
+        req_text: The Text field from the Requirement
+        domain: The domain classification ("DMGR", "BRDG", or "OTHER")
+    
+    Returns:
+        True if the Text meets the domain-specific standard, False otherwise
+    """
+    if not req_text:
+        return False
+    
+    if domain == "DMGR":
+        return "shall render" in req_text
+    elif domain == "BRDG":
+        return "shall set" in req_text
+    else:
+        # OTHER domain has no specific Text standard, but text must be non-empty
+        return True
+
+
+def has_brdg_render_issue(ver_name: str, ver_text: str) -> bool:
+    """
+    Detect if a BRDG Verification item incorrectly contains "render" terminology.
+    
+    BRDG items should use "set" semantics, not "render" semantics.
+    This performs case-insensitive, word-boundary-aware detection.
+    
+    Args:
+        ver_name: The Name field from the Verification item
+        ver_text: The Text field from the Verification item
+    
+    Returns:
+        True if a whole-word "render", "renders", "rendered", or "rendering"
+        is found (case-insensitive), False otherwise.
+    """
+    name_to_check = ver_name or ""
+    text_to_check = ver_text or ""
+    return bool(BRDG_RENDER_PATTERN.search(name_to_check)) or bool(BRDG_RENDER_PATTERN.search(text_to_check))
+
+
 def generate_verification_items(items: List[Dict[str, str]]) -> List[Dict[str, str]]:
     """
     For each Requirement item that matches the scope rules, generate a
@@ -594,18 +662,46 @@ def generate_verification_items(items: List[Dict[str, str]]) -> List[Dict[str, s
         ver_item["Parent_Req"] = ""
         ver_item["ID"] = ver_id
 
-        # Name transformation
-        if is_setting:
-            ver_item["Name"] = transform_name_setting(req_name)
+        # --- Option B: Check for non-standard fields ---
+        non_standard_fields = []
+        
+        # Check if Name is non-standard (doesn't start with "Render " or "Set ")
+        name_is_standard = is_standard_name(req_name)
+        if not name_is_standard:
+            non_standard_fields.append("Name")
+        
+        # Check if Text is non-standard based on domain
+        text_is_standard = is_standard_text(req_text, domain)
+        if not text_is_standard:
+            non_standard_fields.append("Text")
+        
+        # Add comment if there are any non-standard fields
+        if non_standard_fields:
+            comment_text = f"# FIX - Non-Standard {', '.join(non_standard_fields)}"
+            ver_items.append({"_comment": comment_text})
+        
+        # Apply Name transformation based on whether Name is standard
+        if not name_is_standard:
+            # Option B: Minimal transformation for non-standard Name
+            ver_item["Name"] = "Verify " + req_name.strip()
         else:
-            ver_item["Name"] = transform_name_general(req_name)
+            # Standard Name: apply existing transformations
+            if is_setting:
+                ver_item["Name"] = transform_name_setting(req_name)
+            else:
+                ver_item["Name"] = transform_name_general(req_name)
 
-        # Text transformation
-        ver_item["Text"] = transform_text(
-            req_text,
-            is_advanced=is_advanced,
-            is_setting=is_setting,
-        )
+        # Apply Text transformation based on whether Text is standard
+        if not text_is_standard:
+            # Option B: Minimal transformation for non-standard Text (copy verbatim)
+            ver_item["Text"] = req_text
+        else:
+            # Standard Text: apply existing transformation
+            ver_item["Text"] = transform_text(
+                req_text,
+                is_advanced=is_advanced,
+                is_setting=is_setting,
+            )
 
         # Verified_By starts empty for the Verification
         ver_item["Verified_By"] = ""
@@ -617,6 +713,25 @@ def generate_verification_items(items: List[Dict[str, str]]) -> List[Dict[str, s
         # Preserve the fact that Text was a block scalar so we can rewrite it
         if "_Text_block" in item:
             ver_item["_Text_block"] = item["_Text_block"]
+
+        # --- Additional check: BRDG render issue ---
+        if domain == "BRDG" and has_brdg_render_issue(ver_item["Name"], ver_item["Text"]):
+            # Insert comment entry before this Verification item.
+            # If there is an immediately preceding non-standard comment for this
+            # verification (added at line 681), combine it into a single, prioritized comment.
+            # Note: This is safe because nothing else is added to ver_items between
+            # the non-standard comment insertion (line 681) and this check.
+            combined_comment = "# FIX - BRDG must not render"
+            if ver_items and isinstance(ver_items[-1], dict) and "_comment" in ver_items[-1]:
+                last_comment = ver_items[-1].get("_comment", "")
+                if last_comment.startswith("# FIX - Non-Standard"):
+                    # Extract the non-standard fields from the previous comment
+                    # Format: "# FIX - Non-Standard Name" or "# FIX - Non-Standard Name, Text"
+                    non_standard_part = last_comment.replace("# FIX - Non-Standard ", "")
+                    # Remove the prior non-standard comment and combine into one
+                    ver_items.pop()
+                    combined_comment = f"# FIX - BRDG must not render; Non-Standard {non_standard_part}"
+            ver_items.append({"_comment": combined_comment})
 
         ver_items.append(ver_item)
 
@@ -946,19 +1061,33 @@ def main() -> None:
     # Filter out only the *new* Verification items that were created by
     # generate_verification_items (i.e., those whose ID does not already
     # exist in the original file).
+    # Also include comment entries that immediately precede new verifications.
     new_ver_items: List[Dict[str, str]] = []
+    pending_comments: List[Dict[str, str]] = []
+    
     for item in items_with_verifications:
+        # Standalone comment entry - hold it temporarily
+        if "_comment" in item and len(item) == 1:
+            pending_comments.append(item)
+            continue
+        
         item_type = item.get("Type", "").strip()
-        if item_type not in {
+        # If this is a verification item
+        if item_type in {
             "Verification",
             "DMGR Verification Requirement",
             "BRDG Verification Requirement"
         }:
-            continue
-        ver_id = item.get("ID", "").strip()
-        if not ver_id or ver_id in existing_ver_ids:
-            continue
-        new_ver_items.append(item)
+            ver_id = item.get("ID", "").strip()
+            # If it's a new verification, include any pending comments and the item
+            if ver_id and ver_id not in existing_ver_ids:
+                new_ver_items.extend(pending_comments)
+                new_ver_items.append(item)
+            # Clear pending comments either way
+            pending_comments = []
+        else:
+            # Not a verification, so clear pending comments (they were for requirements)
+            pending_comments = []
 
     # Read the original file content so we can preserve all comments and
     # formatting, only touching the Verified_By fields and appending new
