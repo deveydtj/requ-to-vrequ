@@ -155,8 +155,9 @@ def test_no_anchor_skips_sequencing():
         id_map = build_id_sequence_map(items)
         
         # Should not create any mappings since there's no anchor
-        assert "REQU.NOANCHOR.X" not in id_map, "Should not sequence .X without anchor"
-        assert "REQU.NOANCHOR.x" not in id_map, "Should not sequence .x without anchor"
+        # Note: id_map keys have format "ID@INDEX"
+        has_noanchor_mapping = any("REQU.NOANCHOR." in key for key in id_map.keys())
+        assert not has_noanchor_mapping, "Should not sequence IDs without anchor"
         
         sequenced_text = apply_id_sequence_patch(test_yaml, id_map)
         

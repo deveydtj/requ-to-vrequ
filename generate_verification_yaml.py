@@ -524,7 +524,8 @@ def build_id_sequence_map(items: List[Dict[str, str]]) -> Dict[str, str]:
     
     # Track anchors and counters per (domain, stem)
     # Key: (domain, stem), Value: (anchor_number, next_sequence_number)
-    domain_stem_state: Dict[tuple[str, str], tuple[int, int]] = {}
+    from typing import Tuple
+    domain_stem_state: Dict[Tuple[str, str], Tuple[int, int]] = {}
     
     for idx, item in enumerate(items):
         # Skip non-item entries like standalone comments
@@ -587,6 +588,11 @@ def apply_id_sequence_patch(original_text: str, id_map: Dict[str, str]) -> str:
     This function preserves all formatting and comments while updating only the ID fields
     for Requirement items that have placeholder IDs.
     
+    Note: Item indexing must match the order produced by parse_items(), which:
+    - Creates a standalone comment item for comments appearing before the first "- Type:" line
+    - Does NOT create standalone items for comments appearing between structured items
+      (those are stored in the item's _order field instead)
+    
     Args:
         original_text: The original file content as a string
         id_map: Mapping from "ORIGINAL_ID@INDEX" to sequenced IDs
@@ -600,7 +606,7 @@ def apply_id_sequence_patch(original_text: str, id_map: Dict[str, str]) -> str:
     lines = original_text.splitlines()
     result: List[str] = []
     
-    # Track which item we're in (by counting ALL items, including comments)
+    # Track which item we're in (by counting ALL items as parse_items() does)
     item_index = -1
     in_item = False
     
@@ -609,6 +615,8 @@ def apply_id_sequence_patch(original_text: str, id_map: Dict[str, str]) -> str:
         stripped = line.lstrip()
         
         # Standalone comment (not inside an item)
+        # Note: Comments between structured items are NOT standalone items -
+        # they're stored in the previous item's _order field by parse_items()
         if not in_item and stripped.startswith("#"):
             item_index += 1
             result.append(line)
