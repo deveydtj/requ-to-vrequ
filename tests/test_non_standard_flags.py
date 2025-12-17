@@ -136,7 +136,7 @@ def test_end_to_end():
         # Run the script
         script_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'generate_verification_yaml.py')
         result = subprocess.run(
-            ['python3', script_path, input_file, output_file],
+            [sys.executable, script_path, input_file, output_file],
             capture_output=True,
             text=True
         )
