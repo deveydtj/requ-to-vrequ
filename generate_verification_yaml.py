@@ -542,7 +542,9 @@ def is_standard_text(req_text: str, domain: str) -> bool:
     Domain-specific standards:
     - DMGR: Text should contain "shall render"
     - BRDG: Text should contain "shall set"
-    - OTHER: No specific Text standard required (always returns True)
+    - OTHER: No specific Text standard required, but text must be non-empty
+    
+    Empty text is always considered non-standard regardless of domain.
     
     Args:
         req_text: The Text field from the Requirement
@@ -559,28 +561,29 @@ def is_standard_text(req_text: str, domain: str) -> bool:
     elif domain == "BRDG":
         return "shall set" in req_text
     else:
-        # OTHER domain has no specific Text standard
+        # OTHER domain has no specific Text standard, but text must be non-empty
         return True
 
 
 def has_brdg_render_issue(ver_name: str, ver_text: str) -> bool:
     """
-    Detect if a BRDG Verification item incorrectly contains "render" or "renders".
+    Detect if a BRDG Verification item incorrectly contains "render" terminology.
     
     BRDG items should use "set" semantics, not "render" semantics.
-    This performs case-insensitive detection.
+    This performs case-insensitive, word-boundary-aware detection.
     
     Args:
         ver_name: The Name field from the Verification item
         ver_text: The Text field from the Verification item
     
     Returns:
-        True if "render" or "renders" is found (case-insensitive), False otherwise
+        True if a whole-word "render", "renders", "rendered", or "rendering"
+        is found (case-insensitive), False otherwise.
     """
-    ver_name_lower = ver_name.lower() if ver_name else ""
-    ver_text_lower = ver_text.lower() if ver_text else ""
-    
-    return "render" in ver_name_lower or "render" in ver_text_lower
+    pattern = re.compile(r"\brender(?:s|ed|ing)?\b", re.IGNORECASE)
+    name_to_check = ver_name or ""
+    text_to_check = ver_text or ""
+    return bool(pattern.search(name_to_check)) or bool(pattern.search(text_to_check))
 
 
 def generate_verification_items(items: List[Dict[str, str]]) -> List[Dict[str, str]]:

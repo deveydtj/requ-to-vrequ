@@ -23,8 +23,6 @@ from generate_verification_yaml import (
     is_standard_name,
     is_standard_text,
     has_brdg_render_issue,
-    parse_items,
-    generate_verification_items,
 )
 
 
@@ -88,6 +86,11 @@ def test_has_brdg_render_issue():
     assert not has_brdg_render_issue("Verify the value is set", "The system sets the value"), "Should not detect when no render"
     assert not has_brdg_render_issue("", ""), "Should not detect in empty strings"
     
+    # Edge cases: should NOT detect "render" as substring in other words
+    assert not has_brdg_render_issue("The system will surrender control", ""), "Should not detect 'render' in 'surrender'"
+    assert not has_brdg_render_issue("", "Use the renderer for display"), "Should not detect 'render' in 'renderer'"
+    assert not has_brdg_render_issue("Tender the application", ""), "Should not detect 'render' in 'tender'"
+    
     print("✓ has_brdg_render_issue tests passed")
 
 
@@ -120,6 +123,15 @@ def test_end_to_end():
   Name: Set the mode
   Text: |
     (U) The system shall set the mode and render the output.
+  Verified_By: 
+  Traced_To: 
+
+- Type: Requirement
+  Parent_Req: 
+  ID: REQU.DMGR.TEST.4
+  Name: Render the dashboard
+  Text: |
+    (U) The system shall render the dashboard on startup.
   Verified_By: 
   Traced_To: 
 """
@@ -158,9 +170,34 @@ def test_end_to_end():
         assert "VREQU.DMGR.TEST.1" in output, "Should create verification for TEST.1"
         assert "VREQU.BRDG.TEST.2" in output, "Should create verification for TEST.2"
         assert "VREQU.BRDG.TEST.3" in output, "Should create verification for TEST.3"
+        assert "VREQU.DMGR.TEST.4" in output, "Should create verification for TEST.4"
         
-        # Verify minimal transformation for non-standard Name
+        # Verify minimal transformation for non-standard Name (TEST.1)
         assert "Verify Display the status" in output, "Should apply minimal Name transformation"
+        
+        # Verify standard Name transformation when Text is non-standard (TEST.2)
+        # TEST.2 has standard Name "Set the timeout" which should transform to "Verify the timeout is set"
+        assert "Verify the timeout is set" in output, "Should apply standard Name transformation even when Text is non-standard"
+        
+        # Verify standard field receives full transformation (TEST.4)
+        # TEST.4 has both standard Name and Text
+        assert "Verify the dashboard is rendered." in output, "Should apply full transformation for standard fields"
+        
+        # Verify TEST.3 has BRDG render issue (standard fields but contains "render")
+        # TEST.3 has "shall set" so Text is standard, Name is standard "Set the mode"
+        # But it contains "render" in Text, triggering BRDG issue
+        output_lines = output.split('\n')
+        test3_verification_line = None
+        for i, line in enumerate(output_lines):
+            if 'ID: VREQU.BRDG.TEST.3' in line:
+                test3_verification_line = i
+                break
+        
+        assert test3_verification_line is not None, "Should find TEST.3 verification"
+        
+        # Check a few lines before for the BRDG render comment
+        preceding_lines = '\n'.join(output_lines[max(0, test3_verification_line-5):test3_verification_line])
+        assert "# FIX - BRDG must not render" in preceding_lines, "Should have BRDG render issue comment before TEST.3"
         
         print("✓ End-to-end test passed")
         return True
@@ -170,10 +207,12 @@ def test_end_to_end():
         try:
             os.remove(input_file)
         except OSError:
+            # Ignore cleanup errors; the temporary input file may already have been removed.
             pass
         try:
             os.remove(output_file)
         except OSError:
+            # Ignore cleanup errors; the temporary output file may already have been removed.
             pass
 
 
