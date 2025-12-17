@@ -30,7 +30,7 @@ import argparse
 import re
 import os
 import tempfile
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 
 # Base key order for output. Additional keys discovered in the file will be
 # appended after these in alphabetical order.
@@ -490,6 +490,211 @@ def transform_text(req_text: str, is_advanced: bool, is_setting: bool) -> str:
             joined = joined.replace("shall set", f"{be} set")
 
     return joined
+
+
+# ---------------------------------------------------------------------------
+# ID Sequencing
+# ---------------------------------------------------------------------------
+
+def build_id_sequence_map(items: List[Dict[str, str]]) -> Dict[str, str]:
+    """
+    Build a mapping from placeholder IDs (ending in .X or .x) to their sequenced replacements.
+    
+    Since multiple items can have the same placeholder ID, this function returns a mapping
+    that includes a position suffix to differentiate them. The key format is:
+    "ORIGINAL_ID@INDEX" where INDEX is the 0-based position of that item in the items list.
+    
+    Sequencing rules:
+    - Only applies to Requirement items (IDs starting with "REQU")
+    - Groups items by domain (DMGR, BRDG, OTHER) and stem (everything up to the last dot)
+    - For each (domain, stem) group:
+      * First numbered ID (ending in .<digit> or .<digit>+) becomes the anchor
+      * Subsequent .X or .x IDs in that group are sequenced starting from anchor + 1
+      * Already-numbered IDs are skipped (not renumbered)
+      * Sequencing stops when an ID's stem diverges from the group stem
+    - If no numbered anchor exists for a stem, .X/.x IDs are left unchanged
+    
+    Args:
+        items: List of parsed item dictionaries
+        
+    Returns:
+        Dictionary mapping "ORIGINAL_ID@INDEX" to their sequenced replacements
+    """
+    id_map: Dict[str, str] = {}
+    
+    # Track anchors and counters per (domain, stem)
+    # Key: (domain, stem), Value: (anchor_number, next_sequence_number)
+    domain_stem_state: Dict[Tuple[str, str], Tuple[int, int]] = {}
+    
+    for idx, item in enumerate(items):
+        # Skip non-item entries like standalone comments
+        if "_comment" in item and len(item) == 1:
+            continue
+            
+        req_id = item.get("ID", "").strip()
+        
+        # Only process Requirement IDs
+        if not is_requirement_id(req_id):
+            continue
+        
+        # Classify domain
+        domain = classify_domain(req_id)
+        
+        # Extract stem (everything up to the last dot)
+        if "." not in req_id:
+            continue
+        
+        last_dot_idx = req_id.rfind(".")
+        stem = req_id[:last_dot_idx]
+        suffix = req_id[last_dot_idx + 1:]
+        
+        key = (domain, stem)
+        
+        # Check if this is a numbered ID (anchor or already-numbered)
+        if suffix.isdigit():
+            # This is a numbered ID
+            num = int(suffix)
+            
+            # If no anchor exists for this (domain, stem), this becomes the anchor
+            if key not in domain_stem_state:
+                domain_stem_state[key] = (num, num + 1)
+            # If anchor exists but this is a different number, update next sequence if needed
+            # Note: The anchor (first numbered ID) remains constant; only next_sequence_number updates
+            elif num >= domain_stem_state[key][1]:
+                anchor_num, _ = domain_stem_state[key]
+                domain_stem_state[key] = (anchor_num, num + 1)
+        
+        # Check if this is a placeholder (.X or .x)
+        elif suffix in ("X", "x"):
+            # Only sequence if we have an anchor for this (domain, stem)
+            if key in domain_stem_state:
+                anchor_num, next_num = domain_stem_state[key]
+                # Create the sequenced ID
+                sequenced_id = f"{stem}.{next_num}"
+                # Use item index to make the key unique
+                map_key = f"{req_id}@{idx}"
+                id_map[map_key] = sequenced_id
+                # Update the next sequence number
+                domain_stem_state[key] = (anchor_num, next_num + 1)
+            # If no anchor, leave .X/.x unchanged (don't add to map)
+    
+    return id_map
+
+
+def apply_id_sequence_patch(original_text: str, id_map: Dict[str, str]) -> str:
+    """
+    Replace placeholder IDs (.X/.x) in the original text with their sequenced values.
+    
+    This function preserves all formatting and comments while updating only the ID fields
+    for Requirement items that have placeholder IDs.
+    
+    Note: Item indexing must match the order produced by parse_items(), which:
+    - Creates a standalone comment item for comments appearing before the first "- Type:" line
+    - Does NOT create standalone items for comments appearing between structured items
+      (those are stored in the item's _order field instead)
+    
+    Args:
+        original_text: The original file content as a string
+        id_map: Mapping from "ORIGINAL_ID@INDEX" to sequenced IDs
+        
+    Returns:
+        Updated text with sequenced IDs
+    """
+    if not id_map:
+        return original_text
+    
+    lines = original_text.splitlines()
+    result: List[str] = []
+    
+    # Track which item we're in (by counting ALL items as parse_items() does)
+    item_index = -1
+    in_item = False
+    
+    for line in lines:
+        # Detect start of new item (including standalone comments)
+        stripped = line.lstrip()
+        
+        # Standalone comment before the first structured item
+        # Note: Comments between structured items are NOT standalone items -
+        # they're stored in the previous item's _order field by parse_items()
+        if item_index == -1 and stripped.startswith("#"):
+            item_index += 1
+            result.append(line)
+            continue
+        
+        # Start of a structured item
+        if line.startswith("- Type:"):
+            item_index += 1
+            in_item = True
+            result.append(line)
+            continue
+        
+        # Check if this is an ID line within an item
+        if in_item and stripped.startswith("ID:"):
+            # Extract the ID value
+            id_val = stripped[len("ID:"):].strip()
+            
+            # Build the map key with current item index
+            map_key = f"{id_val}@{item_index}"
+            
+            # If this ID is in our mapping, replace it
+            if map_key in id_map:
+                # Preserve indentation
+                indent = line[:len(line) - len(line.lstrip())]
+                new_id = id_map[map_key]
+                result.append(f"{indent}ID: {new_id}")
+                continue
+        
+        # Not an ID line or not in map, keep as-is
+        result.append(line)
+    
+    return "\n".join(result)
+
+
+def sequence_requirement_ids(items: List[Dict[str, str]], id_map: Optional[Dict[str, str]] = None) -> List[Dict[str, str]]:
+    """
+    Apply ID sequencing to the structured items list.
+    
+    This creates a new list with updated IDs for items that have placeholder IDs.
+    
+    Args:
+        items: List of parsed item dictionaries
+        id_map: Optional pre-computed ID mapping. If None, will be computed.
+        
+    Returns:
+        New list with sequenced IDs applied
+    """
+    # Build the ID mapping if not provided
+    if id_map is None:
+        id_map = build_id_sequence_map(items)
+    
+    if not id_map:
+        return items
+    
+    # Create updated items list
+    result: List[Dict[str, str]] = []
+    
+    for idx, item in enumerate(items):
+        # Pass through comments unchanged
+        if "_comment" in item and len(item) == 1:
+            result.append(item)
+            continue
+        
+        # Check if this item's ID needs sequencing
+        req_id = item.get("ID", "").strip()
+        map_key = f"{req_id}@{idx}"
+        
+        if map_key in id_map:
+            # Create a shallow copy and update the ID
+            # Shallow copy is safe here because we only modify the ID field,
+            # and no other code will modify the _order list after this point
+            updated_item = dict(item)
+            updated_item["ID"] = id_map[map_key]
+            result.append(updated_item)
+        else:
+            result.append(item)
+    
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -1037,15 +1242,29 @@ def main() -> None:
     parser.add_argument("output_file", help="Path to output YAML-like file.")
     args = parser.parse_args()
 
-    # Parse the input file for structured items (Requirements + any existing
-    # Verification items).
+    # 1) Parse the input file for structured items (Requirements + any existing
+    #    Verification items).
     items = parse_items(args.input_file)
 
-    # Let the existing logic build updated Requirement items (with Verified_By)
-    # plus all generated Verification items.
-    items_with_verifications = generate_verification_items(items)
+    # 2) Compute ID sequence mapping for placeholder IDs (.X/.x)
+    id_map = build_id_sequence_map(items)
 
-    # Build a map of Requirement ID -> Verified_By (Verification ID)
+    # 3) Apply sequencing to structured items (for verification generation)
+    # Pass id_map to avoid rebuilding it
+    sequenced_items = sequence_requirement_ids(items, id_map)
+
+    # 4) Read original text and apply ID sequencing patch
+    with open(args.input_file, "r", encoding="utf-8") as f:
+        original_text = f.read()
+    
+    # Apply ID sequencing before Verified_By patching
+    sequenced_text = apply_id_sequence_patch(original_text, id_map)
+
+    # 5) Generate verification items from the sequenced items
+    items_with_verifications = generate_verification_items(sequenced_items)
+
+    # 6) Build a map of Requirement ID -> Verified_By (Verification ID)
+    #    Using the sequenced (updated) IDs
     req_verified_map: Dict[str, str] = {}
     for item in items_with_verifications:
         req_id = item.get("ID", "").strip()
@@ -1058,7 +1277,7 @@ def main() -> None:
 
     # Collect IDs of any existing Verification items so we don't duplicate them
     # if the script is run multiple times.
-    # Now we need to check for all types of verification items, not just "Verification"
+    # Check against the original (pre-sequencing) items to see what was already there
     existing_ver_ids = {
         item.get("ID", "").strip()
         for item in items
@@ -1100,17 +1319,11 @@ def main() -> None:
             # Not a verification, so clear pending comments (they were for requirements)
             pending_comments = []
 
-    # Read the original file content so we can preserve all comments and
-    # formatting, only touching the Verified_By fields and appending new
-    # Verification blocks at the end.
-    with open(args.input_file, "r", encoding="utf-8") as f:
-        original_text = f.read()
+    # 7) Apply Verified_By patch to the sequenced text (using updated IDs from sequencing)
+    updated_text = apply_verified_by_patch(sequenced_text, req_verified_map)
 
-    # First, update Verified_By in the requirements section.
-    updated_text = apply_verified_by_patch(original_text, req_verified_map)
-
-    # If there are no new Verification items to add, we're done after updating
-    # the Verified_By fields in-place.
+    # 8) If there are no new Verification items to add, we're done after updating
+    #    the Verified_By fields in-place.
     if not new_ver_items:
         with open(args.output_file, "w", encoding="utf-8") as f:
             f.write(updated_text)
@@ -1120,7 +1333,7 @@ def main() -> None:
     extra_text = render_items_to_string(new_ver_items)
 
     with open(args.output_file, "w", encoding="utf-8") as f:
-        # Preserve the original content (with updated Verified_By) exactly,
+        # Preserve the original content (with updated IDs and Verified_By) exactly,
         # then add a blank line and the new Verification section.
         f.write(updated_text.rstrip("\n"))
         f.write("\n\n")
