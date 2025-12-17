@@ -55,7 +55,7 @@ Requirements are classified by their ID patterns:
 
 **Name Transformations:**
 - **Non-setting semantics:** Prefix with "Verify"
-  - Special case for "Render X": Converts to "Verify the X is/are rendered." (adds "the" unless X already starts with "the"/"The")
+  - Special case for "Render X": Converts to "Verify the X is/are rendered." when X doesn't start with "the"/"The", or "Verify X is/are rendered." when it does (avoids double article)
 - **Setting semantics** (when Name contains standalone word "Set"):
   - Remove leading "Set " if present
   - Replace last standalone "to" with "is/are set to" (plurality-aware)
