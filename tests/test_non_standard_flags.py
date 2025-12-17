@@ -166,11 +166,15 @@ def test_end_to_end():
         return True
         
     finally:
-        # Clean up
-        if os.path.exists(input_file):
+        # Clean up temporary files
+        try:
             os.remove(input_file)
-        if os.path.exists(output_file):
+        except OSError:
+            pass
+        try:
             os.remove(output_file)
+        except OSError:
+            pass
 
 
 def main():
