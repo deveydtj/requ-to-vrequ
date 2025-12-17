@@ -40,6 +40,7 @@ When a Requirement has non-standard Name or Text:
 
 When a BRDG Verification contains "render" (case-insensitive):
 - A comment is inserted: `# FIX - BRDG must not render`
+- If the same Verification also has a non-standard Name or Text, the BRDG and non-standard comments are combined into a single comment line, e.g., `# FIX - BRDG must not render; Non-Standard Name` or `# FIX - BRDG must not render; Non-Standard Text`.
 
 ## Example
 
