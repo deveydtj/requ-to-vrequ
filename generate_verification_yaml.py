@@ -714,7 +714,7 @@ def generate_verification_items(items: List[Dict[str, str]]) -> List[Dict[str, s
         if "_Text_block" in item:
             ver_item["_Text_block"] = item["_Text_block"]
 
-        # --- Independent check: BRDG render issue ---
+        # --- Additional check: BRDG render issue ---
         if domain == "BRDG" and has_brdg_render_issue(ver_item["Name"], ver_item["Text"]):
             # Insert comment entry before this Verification item.
             # If there is an immediately preceding non-standard comment for this
