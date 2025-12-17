@@ -14,11 +14,6 @@ import os
 import tempfile
 import subprocess
 
-# Add parent directory to path to import the module
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from generate_verification_yaml import parse_items
-
 
 def get_script_path():
     """Get the path to the main script."""

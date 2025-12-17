@@ -1277,6 +1277,8 @@ def main() -> None:
             print("=" * 60)
             for map_key, new_id in sorted(id_map.items()):
                 # Extract original ID from map_key format "ORIGINAL_ID@INDEX"
+                # The @INDEX suffix is added by build_id_sequence_map() to ensure
+                # uniqueness when multiple items have the same placeholder ID
                 old_id = map_key.split("@")[0]
                 print(f"  {old_id} -> {new_id}")
             print("=" * 60)
