@@ -1279,7 +1279,8 @@ def main() -> None:
                 # Extract original ID from map_key format "ORIGINAL_ID@INDEX"
                 # The @INDEX suffix is added by build_id_sequence_map() to ensure
                 # uniqueness when multiple items have the same placeholder ID
-                old_id = map_key.split("@")[0]
+                # Use rsplit to handle IDs that might contain @ in their name
+                old_id = map_key.rsplit("@", 1)[0]
                 print(f"  {old_id} -> {new_id}")
             print("=" * 60)
         

@@ -13,6 +13,7 @@ import sys
 import os
 import tempfile
 import subprocess
+import traceback
 
 
 def get_script_path():
@@ -367,12 +368,10 @@ def main():
         
     except AssertionError as e:
         print(f"\n✗ Test failed: {e}")
-        import traceback
         traceback.print_exc()
         return 1
     except Exception as e:
         print(f"\n✗ Unexpected error: {e}")
-        import traceback
         traceback.print_exc()
         return 1
 
