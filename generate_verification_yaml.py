@@ -6,14 +6,17 @@ in a simple YAML-like file, without third-party libraries.
 This script is designed to satisfy the authoring rules described in the
 "authoring requirements and guidelines" document, including:
 
-- Recognizing Requirement items by Type (Requirement / requirement / req / requ / REQU)
-- Only processing Requirements whose ID starts with "REQU"
+- Recognizing Requirement items by ID (must start with "REQU")
+- Setting Verification Type based on domain:
+  * "DMGR Verification Requirement" for IDs containing ".DMGR."
+  * "BRDG Verification Requirement" for IDs containing ".BRDG."
+  * "Verification" for all other IDs
 - Applying special wording rules for IDs containing ".BRDG." (Bridge) or
   ".DMGR." (Data Manager)
 - Case-sensitive handling of the tokens "Set", "to", "The", and "shall set"
 - Generating a Verification item with fields:
   Type, Parent_Req, ID, Name, Text, Verified_By, Traced_To (if present)
-- Setting Parent_Req of the Verification to the Requirement ID
+- Setting Parent_Req of the Verification to blank
 - Copying Traced_To from the Requirement to the Verification (scalar only)
 - Preserving multiline values using YAML block scalar syntax (Key: |)
 - Capturing and re-emitting all comments in the original order, adjacent to
@@ -489,18 +492,47 @@ def transform_text(req_text: str, is_advanced: bool, is_setting: bool) -> str:
 # Verification generation
 # ---------------------------------------------------------------------------
 
+def is_requirement_id(req_id: str) -> bool:
+    """
+    Return True if the given ID represents a Requirement.
+    
+    A valid Requirement ID starts with "REQU." or "REQU" (for edge cases
+    where the ID might be exactly "REQU").
+    """
+    req_id = req_id.strip()
+    return req_id.startswith("REQU")
+
+
+def classify_domain(req_id: str) -> str:
+    """
+    Classify the domain of a Requirement based on its ID.
+    
+    Returns:
+    - "DMGR" if the ID contains ".DMGR."
+    - "BRDG" if the ID contains ".BRDG."
+    - "OTHER" otherwise
+    """
+    req_id = req_id.strip()
+    if ".DMGR." in req_id:
+        return "DMGR"
+    elif ".BRDG." in req_id:
+        return "BRDG"
+    else:
+        return "OTHER"
+
+
 def generate_verification_items(items: List[Dict[str, str]]) -> List[Dict[str, str]]:
     """
     For each Requirement item that matches the scope rules, generate a
     corresponding Verification item and update the Requirement's Verified_By.
 
     Scope rules:
-    - Type must be exactly one of: Requirement, requirement, req, requ, REQU
-    - ID must start with 'REQU'
+    - ID must start with 'REQU' (Type is no longer used for detection)
 
-    Bridge / DMGR identification:
-    - If '.BRDG.' is in the ID, Bridge rules are enabled.
-    - If '.DMGR.' is in the ID, Data Manager rules are enabled.
+    Verification Type assignment:
+    - If '.DMGR.' is in the ID, Type is set to "DMGR Verification Requirement"
+    - If '.BRDG.' is in the ID, Type is set to "BRDG Verification Requirement"
+    - Otherwise, Type is set to "Verification"
 
     Name & Text transformations follow the authoring guidelines:
     - Non-setting: 'Verify <Name>', and Text with 'Verify the' or 'Verify '.
@@ -508,7 +540,7 @@ def generate_verification_items(items: List[Dict[str, str]]) -> List[Dict[str, s
       when applicable.
 
     Parent_Req and Traced_To:
-    - Verification.Parent_Req is set to the Requirement ID.
+    - Verification.Parent_Req is left blank.
     - If Requirement.Traced_To is present, it is copied as-is to the
       Verification (scalar only in this script).
     """
@@ -521,24 +553,20 @@ def generate_verification_items(items: List[Dict[str, str]]) -> List[Dict[str, s
             result.append(item)
             continue
 
-        item_type = item.get("Type", "").strip()
-
-        # Recognize Requirement types per spec (case-sensitive)
-        if item_type not in {"Requirement", "requirement", "req", "requ", "REQU"}:
-            result.append(item)
-            continue
-
         req_id = item.get("ID", "").strip()
-        if not req_id.startswith("REQU"):
-            # Only REQU.* IDs are in scope
+        
+        # Use ID-based detection: process only items with IDs starting with "REQU"
+        if not is_requirement_id(req_id):
             result.append(item)
             continue
 
         req_name = item.get("Name", "")
         req_text = item.get("Text", "")
 
-        is_brdg = ".BRDG." in req_id
-        is_dmgr = ".DMGR." in req_id
+        # Classify the domain based on ID
+        domain = classify_domain(req_id)
+        is_brdg = (domain == "BRDG")
+        is_dmgr = (domain == "DMGR")
         is_advanced = is_brdg or is_dmgr
 
         # Setting semantics if Name contains 'Set' as a standalone word
@@ -554,8 +582,16 @@ def generate_verification_items(items: List[Dict[str, str]]) -> List[Dict[str, s
         # --- Create the Verification item ---
         ver_item: Dict[str, str] = {}
 
-        ver_item["Type"] = "Verification"
-        ver_item["Parent_Req"] = req_id
+        # Set Type based on domain
+        if domain == "DMGR":
+            ver_item["Type"] = "DMGR Verification Requirement"
+        elif domain == "BRDG":
+            ver_item["Type"] = "BRDG Verification Requirement"
+        else:
+            ver_item["Type"] = "Verification"
+        
+        # Set Parent_Req to blank
+        ver_item["Parent_Req"] = ""
         ver_item["ID"] = ver_id
 
         # Name transformation
@@ -661,7 +697,11 @@ def write_items(path: str, items: List[Dict[str, str]]) -> None:
             first_block = False
 
             item_type = item.get("Type", "")
-            is_verification = (item_type == "Verification")
+            is_verification = item_type in {
+                "Verification",
+                "DMGR Verification Requirement",
+                "BRDG Verification Requirement"
+            }
 
             # Top-level item marker
             f.write(f"- Type: {item_type}\n")
@@ -729,8 +769,7 @@ def apply_verified_by_patch(original_text: str, req_verified_map: Dict[str, str]
 
     We:
     - Detect top-level items that start with "- Type: ...".
-    - Track the Requirement ID for items whose Type is one of the recognized
-      Requirement types and whose ID starts with "REQU".
+    - Track the Requirement ID for items whose ID starts with "REQU".
     - For those, either replace an existing "Verified_By:" line or insert a new
       one near the other key/value lines.
 
@@ -753,11 +792,10 @@ def apply_verified_by_patch(original_text: str, req_verified_map: Dict[str, str]
         nonlocal item_lines, current_type, current_req_id, in_item
         if not in_item:
             return
-        # Only patch Requirement items that have a mapping entry
+        # Only patch items whose ID starts with REQU and are in the mapping
         if (
-            current_type in {"Requirement",
-                "requirement", "req", "requ", "REQU"}
-            and current_req_id
+            current_req_id
+            and is_requirement_id(current_req_id)
             and current_req_id in req_verified_map
         ):
             ver_id = req_verified_map[current_req_id]
@@ -793,22 +831,23 @@ def apply_verified_by_patch(original_text: str, req_verified_map: Dict[str, str]
                 m_key = re.match(r"^(\s*)([A-Za-z0-9_]+)\s*:", line)
                 if m_key:
                     key_indent, key_name = m_key.group(1), m_key.group(2)
+                    # Always track the last key we see (even if it's a block scalar start)
                     last_key_index = len(patched)
-                    if key_name == "Text":
-                        text_key_index = len(patched)
-                    elif key_name == "Name":
+                    if key_name == "Name":
                         name_key_index = len(patched)
 
                 patched.append(line)
+                
+                # After appending each line, update last_key_index if this isn't just whitespace
+                # or part of a block - this way last_key_index points to after all content
+                if stripped and not stripped.startswith("#"):
+                    # This is actual content, so the position after this could be a good insertion point
+                    pass
 
             if not has_verified_by:
-                # Compute indentation: prefer Text's indent, then Name's, then a default
+                # Compute indentation: prefer Name's indent, then last key's, then a default
                 indent = "  "
-                if text_key_index != -1:
-                    m = re.match(r"^(\s*)", patched[text_key_index])
-                    if m:
-                        indent = m.group(1) or indent
-                elif name_key_index != -1:
+                if name_key_index != -1:
                     m = re.match(r"^(\s*)", patched[name_key_index])
                     if m:
                         indent = m.group(1) or indent
@@ -819,18 +858,17 @@ def apply_verified_by_patch(original_text: str, req_verified_map: Dict[str, str]
 
                 insert_line = f"{indent}Verified_By: {ver_id}"
 
-                # Insert after Text if we saw it, else after the last key, else after '- Type' line
-                if text_key_index != -1:
-                    insert_at = text_key_index + 1
-                elif last_key_index != -1:
+                # Insert at the end of the item (after last_key_index)
+                # This ensures we don't break multiline blocks
+                if last_key_index != -1:
                     insert_at = last_key_index + 1
-                else:
-                    insert_at = 1  # just after the '- Type:' line
-
-                if insert_at > len(patched):
+                    # But we need to skip past any content that belongs to the last key
+                    # (like block scalar content). Find the actual end of content.
+                    # Since we already added everything to patched, just append at the end
                     patched.append(insert_line)
                 else:
-                    patched.insert(insert_at, insert_line)
+                    # No keys found, insert after '- Type:' line
+                    patched.insert(1, insert_line)
 
             result.extend(patched)
         else:
@@ -895,11 +933,9 @@ def main() -> None:
     # Build a map of Requirement ID -> Verified_By (Verification ID)
     req_verified_map: Dict[str, str] = {}
     for item in items_with_verifications:
-        item_type = item.get("Type", "").strip()
-        if item_type not in {"Requirement", "requirement", "req", "requ", "REQU"}:
-            continue
         req_id = item.get("ID", "").strip()
-        if not req_id.startswith("REQU"):
+        # Use ID-based detection instead of Type
+        if not is_requirement_id(req_id):
             continue
         ver_id = item.get("Verified_By", "").strip()
         if ver_id:
@@ -907,10 +943,15 @@ def main() -> None:
 
     # Collect IDs of any existing Verification items so we don't duplicate them
     # if the script is run multiple times.
+    # Now we need to check for all types of verification items, not just "Verification"
     existing_ver_ids = {
         item.get("ID", "").strip()
         for item in items
-        if item.get("Type", "").strip() == "Verification"
+        if item.get("Type", "").strip() in {
+            "Verification",
+            "DMGR Verification Requirement",
+            "BRDG Verification Requirement"
+        }
     }
 
     # Filter out only the *new* Verification items that were created by
@@ -918,7 +959,12 @@ def main() -> None:
     # exist in the original file).
     new_ver_items: List[Dict[str, str]] = []
     for item in items_with_verifications:
-        if item.get("Type", "").strip() != "Verification":
+        item_type = item.get("Type", "").strip()
+        if item_type not in {
+            "Verification",
+            "DMGR Verification Requirement",
+            "BRDG Verification Requirement"
+        }:
             continue
         ver_id = item.get("ID", "").strip()
         if not ver_id or ver_id in existing_ver_ids:
