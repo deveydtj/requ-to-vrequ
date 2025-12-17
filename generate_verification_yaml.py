@@ -770,6 +770,8 @@ def write_items(path: str, items: List[Dict[str, str]]) -> None:
 
     Behavior:
     - A blank line is written between each item block.
+    - Standalone comment entries are written directly adjacent to the following item
+      (no blank line between a comment and its associated item).
     - Keys that appear in the parsed order ('_order') are written in that exact order,
       interleaved with comments. Then any remaining keys are appended using the global key order.
     - For Verification items, all keys in the global key order are written (some may be blank).
@@ -797,6 +799,7 @@ def write_items(path: str, items: List[Dict[str, str]]) -> None:
 
     with open(path, "w", encoding="utf-8") as f:
         first_block = True
+        prev_was_comment = False
 
         for item in items:
             # Standalone comment entry: write exactly as it appeared
@@ -804,12 +807,15 @@ def write_items(path: str, items: List[Dict[str, str]]) -> None:
                 if not first_block:
                     f.write("\n")
                 first_block = False
+                prev_was_comment = True
                 f.write(f"{item['_comment']}\n")
                 continue
 
-            if not first_block:
+            # Only add blank line if previous wasn't a standalone comment
+            if not first_block and not prev_was_comment:
                 f.write("\n")
             first_block = False
+            prev_was_comment = False
 
             item_type = item.get("Type", "")
             is_verification = item_type in {
@@ -857,6 +863,10 @@ def render_items_to_string(items: List[Dict[str, str]]) -> str:
     This helper uses write_items() on a temporary file and returns its contents
     so that the caller can append the rendered items to an existing file
     without re-emitting the original requirements section.
+    
+    Returns:
+        A string with trailing newlines removed to avoid double blank lines
+        when appending to an existing file.
     """
     if not items:
         return ""
