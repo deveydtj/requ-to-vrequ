@@ -615,6 +615,9 @@ def apply_id_sequence_patch(original_text: str, id_map: Dict[str, str]) -> str:
     # Track which item we're in (by counting ALL items as parse_items() does)
     item_index = -1
     in_item = False
+    # Track whether we've seen any structured item (starting with '- Type:')
+    # to distinguish preamble comments (before first structured item) from
+    # inter-item comments (which are stored in the previous item's _order)
     seen_structured_item = False
     
     for line in lines:
