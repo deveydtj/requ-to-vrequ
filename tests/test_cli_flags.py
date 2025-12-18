@@ -14,7 +14,6 @@ Target Python version: 3.10.0+
 import sys
 import os
 import subprocess
-import pytest
 
 from conftest import get_script_path
 
