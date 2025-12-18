@@ -24,6 +24,12 @@ This script is designed to satisfy the authoring rules described in the
 
 USAGE:
 python generate_verification_yaml.py input.yaml output.yaml
+python generate_verification_yaml.py --no-sequence input.yaml output.yaml
+python generate_verification_yaml.py --sequence-log input.yaml output.yaml
+
+FLAGS:
+  --no-sequence    Disable ID sequencing (placeholder IDs like .X will remain unchanged)
+  --sequence-log   Print a summary of ID renumbering operations to stdout
 """
 
 import argparse
@@ -1240,27 +1246,59 @@ def main() -> None:
     parser.add_argument(
         "input_file", help="Path to input YAML-like requirements file.")
     parser.add_argument("output_file", help="Path to output YAML-like file.")
+    parser.add_argument(
+        "--no-sequence",
+        action="store_true",
+        help="Disable ID sequencing (placeholder IDs like .X will remain unchanged)"
+    )
+    parser.add_argument(
+        "--sequence-log",
+        action="store_true",
+        help="Print a summary of ID renumbering operations to stdout"
+    )
     args = parser.parse_args()
 
     # 1) Parse the input file for structured items (Requirements + any existing
     #    Verification items).
     items = parse_items(args.input_file)
 
-    # 2) Compute ID sequence mapping for placeholder IDs (.X/.x)
-    id_map = build_id_sequence_map(items)
+    # 2) Conditionally apply ID sequencing based on --no-sequence flag
+    if args.no_sequence:
+        # Skip sequencing: use original items as-is
+        id_map = {}
+        sequenced_items = items
+    else:
+        # Compute ID sequence mapping for placeholder IDs (.X/.x)
+        id_map = build_id_sequence_map(items)
+        
+        # Log sequencing operations if requested
+        if args.sequence_log and id_map:
+            print("ID Sequencing Summary:")
+            print("=" * 60)
+            for map_key, new_id in sorted(id_map.items()):
+                # Extract original ID from map_key format "ORIGINAL_ID@INDEX"
+                # The @INDEX suffix is added by build_id_sequence_map() to ensure
+                # uniqueness when multiple items have the same placeholder ID.
+                # Use rsplit to strip the synthetic @INDEX suffix (valid IDs do not contain '@').
+                old_id = map_key.rsplit("@", 1)[0]
+                print(f"  {old_id} -> {new_id}")
+            print("=" * 60)
+        
+        # Apply sequencing to structured items (for verification generation)
+        # Pass id_map to avoid rebuilding it
+        sequenced_items = sequence_requirement_ids(items, id_map)
 
-    # 3) Apply sequencing to structured items (for verification generation)
-    # Pass id_map to avoid rebuilding it
-    sequenced_items = sequence_requirement_ids(items, id_map)
-
-    # 4) Read original text and apply ID sequencing patch
+    # 3) Read original text (needed for both sequenced and non-sequenced paths)
     with open(args.input_file, "r", encoding="utf-8") as f:
         original_text = f.read()
     
-    # Apply ID sequencing before Verified_By patching
-    sequenced_text = apply_id_sequence_patch(original_text, id_map)
+    # 4) Apply ID sequencing patch to original text (only if sequencing is enabled)
+    if args.no_sequence:
+        sequenced_text = original_text
+    else:
+        sequenced_text = apply_id_sequence_patch(original_text, id_map)
 
-    # 5) Generate verification items from the sequenced items
+    # 5) Generate verification items from the sequenced (or original) items
     items_with_verifications = generate_verification_items(sequenced_items)
 
     # 6) Build a map of Requirement ID -> Verified_By (Verification ID)
