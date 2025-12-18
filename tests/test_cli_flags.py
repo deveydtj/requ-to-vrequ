@@ -1,19 +1,44 @@
 #!/usr/bin/env python3
 """
-Test script for CLI flags (--no-sequence and --sequence-log).
+Pytest tests for CLI flags (--no-sequence and --sequence-log).
 
-This script validates that the CLI flags work correctly:
+This test suite validates that the CLI flags work correctly:
 1. --no-sequence disables ID sequencing
 2. --sequence-log prints sequencing information to stdout
 3. Flags can be combined or used independently
 4. Default behavior preserves sequencing when flags are not used
+
+Target Python version: 3.10.0+
 """
 
 import sys
 import os
 import tempfile
 import subprocess
-import traceback
+import pytest
+
+
+# Fixtures and helper functions
+
+@pytest.fixture
+def temp_yaml_file():
+    """Fixture to create and cleanup temporary YAML files."""
+    temp_files = []
+    
+    def _create_temp_file(content):
+        f = tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False)
+        temp_path = f.name
+        f.write(content)
+        f.close()
+        temp_files.append(temp_path)
+        return temp_path
+    
+    yield _create_temp_file
+    
+    # Cleanup
+    for path in temp_files:
+        if os.path.exists(path):
+            os.remove(path)
 
 
 def get_script_path():
@@ -24,10 +49,8 @@ def get_script_path():
     )
 
 
-def test_default_sequencing():
+def test_default_sequencing(temp_yaml_file):
     """Test that default behavior (no flags) enables sequencing."""
-    print("Testing default behavior (sequencing enabled)...")
-    
     test_yaml = """- Type: Requirement
   ID: REQU.TEST.1
   Name: First requirement
@@ -50,14 +73,10 @@ def test_default_sequencing():
   Verified_By: 
 """
     
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
-        input_path = f.name
-        f.write(test_yaml)
+    input_path = temp_yaml_file(test_yaml)
+    output_path = input_path.replace('.yaml', '_output.yaml')
     
-    output_path = None
     try:
-        output_path = input_path.replace('.yaml', '_output.yaml')
-        
         # Run without flags
         result = subprocess.run(
             [sys.executable, get_script_path(), input_path, output_path],
@@ -65,37 +84,29 @@ def test_default_sequencing():
             text=True
         )
         
-        if result.returncode != 0:
-            print(f"Error: {result.stderr}")
-            assert False, "Script execution failed"
+        assert result.returncode == 0, f"Script execution failed: {result.stderr}"
         
         with open(output_path, 'r') as f:
             output = f.read()
         
         # Verify sequencing happened (should have .2 and .3)
-        assert "REQU.TEST.1" in output, "Should have .1"
-        assert "REQU.TEST.2" in output, "Should have .2 (sequenced)"
-        assert "REQU.TEST.3" in output, "Should have .3 (sequenced)"
+        assert "REQU.TEST.1" in output
+        assert "REQU.TEST.2" in output
+        assert "REQU.TEST.3" in output
         
-        # Count occurrences of .X (should only be in comments or none)
-        # Requirements section should not have .X
+        # Verify .X is not in ID lines
         lines = output.split('\n')
-        for i, line in enumerate(lines):
+        for line in lines:
             if 'ID: REQU.TEST.' in line:
                 assert '.X' not in line, f"Should not have .X in requirements: {line}"
         
-        print("✓ Default sequencing test passed")
-        
     finally:
-        os.remove(input_path)
-        if output_path and os.path.exists(output_path):
+        if os.path.exists(output_path):
             os.remove(output_path)
 
 
-def test_no_sequence_flag():
+def test_no_sequence_flag(temp_yaml_file):
     """Test that --no-sequence flag disables sequencing."""
-    print("\nTesting --no-sequence flag...")
-    
     test_yaml = """- Type: Requirement
   ID: REQU.TEST.1
   Name: First requirement
@@ -118,14 +129,10 @@ def test_no_sequence_flag():
   Verified_By: 
 """
     
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
-        input_path = f.name
-        f.write(test_yaml)
+    input_path = temp_yaml_file(test_yaml)
+    output_path = input_path.replace('.yaml', '_output.yaml')
     
-    output_path = None
     try:
-        output_path = input_path.replace('.yaml', '_output.yaml')
-        
         # Run with --no-sequence
         result = subprocess.run(
             [sys.executable, get_script_path(), '--no-sequence', input_path, output_path],
@@ -133,15 +140,13 @@ def test_no_sequence_flag():
             text=True
         )
         
-        if result.returncode != 0:
-            print(f"Error: {result.stderr}")
-            assert False, "Script execution failed"
+        assert result.returncode == 0, f"Script execution failed: {result.stderr}"
         
         with open(output_path, 'r') as f:
             output = f.read()
         
         # Verify sequencing did NOT happen (should still have .X)
-        assert "REQU.TEST.1" in output, "Should have .1"
+        assert "REQU.TEST.1" in output
         assert "REQU.TEST.X" in output, "Should still have .X (not sequenced)"
         
         # Should NOT have .2 or .3
@@ -151,18 +156,13 @@ def test_no_sequence_flag():
         # Verification IDs should also use .X
         assert "VREQU.TEST.X" in output, "Verification should also use .X"
         
-        print("✓ --no-sequence flag test passed")
-        
     finally:
-        os.remove(input_path)
-        if output_path and os.path.exists(output_path):
+        if os.path.exists(output_path):
             os.remove(output_path)
 
 
-def test_sequence_log_flag():
+def test_sequence_log_flag(temp_yaml_file):
     """Test that --sequence-log flag prints sequencing information."""
-    print("\nTesting --sequence-log flag...")
-    
     test_yaml = """- Type: Requirement
   ID: REQU.DMGR.TEST.1
   Name: Render first
@@ -192,14 +192,10 @@ def test_sequence_log_flag():
   Verified_By: 
 """
     
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
-        input_path = f.name
-        f.write(test_yaml)
+    input_path = temp_yaml_file(test_yaml)
+    output_path = input_path.replace('.yaml', '_output.yaml')
     
-    output_path = None
     try:
-        output_path = input_path.replace('.yaml', '_output.yaml')
-        
         # Run with --sequence-log
         result = subprocess.run(
             [sys.executable, get_script_path(), '--sequence-log', input_path, output_path],
@@ -207,9 +203,7 @@ def test_sequence_log_flag():
             text=True
         )
         
-        if result.returncode != 0:
-            print(f"Error: {result.stderr}")
-            assert False, "Script execution failed"
+        assert result.returncode == 0, f"Script execution failed: {result.stderr}"
         
         # Check stdout for sequencing information
         stdout = result.stdout
@@ -218,30 +212,23 @@ def test_sequence_log_flag():
         assert "ID Sequencing Summary:" in stdout, "Should have summary header"
         
         # Should show the sequenced IDs
-        assert "REQU.DMGR.TEST.X -> REQU.DMGR.TEST.2" in stdout, \
-            "Should show DMGR sequencing"
-        assert "REQU.BRDG.TEST.X -> REQU.BRDG.TEST.6" in stdout, \
-            "Should show BRDG sequencing"
+        assert "REQU.DMGR.TEST.X -> REQU.DMGR.TEST.2" in stdout, "Should show DMGR sequencing"
+        assert "REQU.BRDG.TEST.X -> REQU.BRDG.TEST.6" in stdout, "Should show BRDG sequencing"
         
         # Verify output file still has sequenced IDs
         with open(output_path, 'r') as f:
             output = f.read()
         
-        assert "REQU.DMGR.TEST.2" in output, "Output should have DMGR.TEST.2"
-        assert "REQU.BRDG.TEST.6" in output, "Output should have BRDG.TEST.6"
-        
-        print("✓ --sequence-log flag test passed")
+        assert "REQU.DMGR.TEST.2" in output
+        assert "REQU.BRDG.TEST.6" in output
         
     finally:
-        os.remove(input_path)
-        if output_path and os.path.exists(output_path):
+        if os.path.exists(output_path):
             os.remove(output_path)
 
 
-def test_no_sequence_with_sequence_log():
+def test_no_sequence_with_sequence_log(temp_yaml_file):
     """Test that --sequence-log has no effect when --no-sequence is used."""
-    print("\nTesting --no-sequence with --sequence-log (log should be empty)...")
-    
     test_yaml = """- Type: Requirement
   ID: REQU.TEST.1
   Name: First requirement
@@ -257,14 +244,10 @@ def test_no_sequence_with_sequence_log():
   Verified_By: 
 """
     
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
-        input_path = f.name
-        f.write(test_yaml)
+    input_path = temp_yaml_file(test_yaml)
+    output_path = input_path.replace('.yaml', '_output.yaml')
     
-    output_path = None
     try:
-        output_path = input_path.replace('.yaml', '_output.yaml')
-        
         # Run with both flags
         result = subprocess.run(
             [sys.executable, get_script_path(), '--no-sequence', '--sequence-log', 
@@ -273,9 +256,7 @@ def test_no_sequence_with_sequence_log():
             text=True
         )
         
-        if result.returncode != 0:
-            print(f"Error: {result.stderr}")
-            assert False, "Script execution failed"
+        assert result.returncode == 0, f"Script execution failed: {result.stderr}"
         
         # Should not print any sequencing info (since sequencing is disabled)
         stdout = result.stdout
@@ -286,21 +267,16 @@ def test_no_sequence_with_sequence_log():
         with open(output_path, 'r') as f:
             output = f.read()
         
-        assert "REQU.TEST.X" in output, "Should still have .X"
-        assert "REQU.TEST.2" not in output, "Should not have .2"
-        
-        print("✓ Combined flags test passed")
+        assert "REQU.TEST.X" in output
+        assert "REQU.TEST.2" not in output
         
     finally:
-        os.remove(input_path)
-        if output_path and os.path.exists(output_path):
+        if os.path.exists(output_path):
             os.remove(output_path)
 
 
-def test_sequence_log_with_no_placeholders():
+def test_sequence_log_with_no_placeholders(temp_yaml_file):
     """Test that --sequence-log handles files with no placeholder IDs gracefully."""
-    print("\nTesting --sequence-log with no placeholder IDs...")
-    
     test_yaml = """- Type: Requirement
   ID: REQU.TEST.1
   Name: First requirement
@@ -316,14 +292,10 @@ def test_sequence_log_with_no_placeholders():
   Verified_By: 
 """
     
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
-        input_path = f.name
-        f.write(test_yaml)
+    input_path = temp_yaml_file(test_yaml)
+    output_path = input_path.replace('.yaml', '_output.yaml')
     
-    output_path = None
     try:
-        output_path = input_path.replace('.yaml', '_output.yaml')
-        
         # Run with --sequence-log
         result = subprocess.run(
             [sys.executable, get_script_path(), '--sequence-log', input_path, output_path],
@@ -331,50 +303,14 @@ def test_sequence_log_with_no_placeholders():
             text=True
         )
         
-        if result.returncode != 0:
-            print(f"Error: {result.stderr}")
-            assert False, "Script execution failed"
+        assert result.returncode == 0, f"Script execution failed: {result.stderr}"
         
         # Should not print summary if there's nothing to sequence
         stdout = result.stdout
         assert "ID Sequencing Summary:" not in stdout, \
             "Should not show summary when there are no placeholders"
         
-        print("✓ No placeholders test passed")
-        
     finally:
-        os.remove(input_path)
-        if output_path and os.path.exists(output_path):
+        if os.path.exists(output_path):
             os.remove(output_path)
 
-
-def main():
-    """Run all CLI flag tests."""
-    print("=" * 60)
-    print("Running CLI flag tests")
-    print("=" * 60)
-    
-    try:
-        test_default_sequencing()
-        test_no_sequence_flag()
-        test_sequence_log_flag()
-        test_no_sequence_with_sequence_log()
-        test_sequence_log_with_no_placeholders()
-        
-        print("\n" + "=" * 60)
-        print("All CLI flag tests passed! ✓")
-        print("=" * 60)
-        return 0
-        
-    except AssertionError as e:
-        print(f"\n✗ Test failed: {e}")
-        traceback.print_exc()
-        return 1
-    except Exception as e:
-        print(f"\n✗ Unexpected error: {e}")
-        traceback.print_exc()
-        return 1
-
-
-if __name__ == "__main__":
-    sys.exit(main())
