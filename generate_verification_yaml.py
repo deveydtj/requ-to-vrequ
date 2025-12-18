@@ -22,6 +22,18 @@ This script is designed to satisfy the authoring rules described in the
 - Capturing and re-emitting all comments in the original order, adjacent to
   the related item blocks.
 
+SUPPORTED TOP-LEVEL ITEM FORMAT:
+Top-level items must start with "- " (hyphen followed by space), optionally
+preceded by leading whitespace. The script supports:
+  - Leading whitespace before "- " (e.g., "  - Type: Requirement")
+  - Variable spacing after the hyphen (e.g., "- Type:" or "-  Type:")
+  - Inline key-value on the same line as "- " (e.g., "- Type: Requirement")
+  - Any key can appear first (e.g., "- ID: REQU.1" or "- Type: Requirement")
+
+The parser uses lstrip() to detect item starts via "- " prefix, making it
+tolerant of leading whitespace and formatting variations. Patchers maintain
+this same tolerance to ensure consistent behavior.
+
 USAGE:
 python generate_verification_yaml.py input.yaml output.yaml
 python generate_verification_yaml.py --no-sequence input.yaml output.yaml
@@ -47,6 +59,42 @@ BASE_KEY_ORDER = [
 # Compiled regex pattern for BRDG render issue detection
 # Matches "render", "renders", "rendered", "rendering" as whole words (case-insensitive)
 BRDG_RENDER_PATTERN = re.compile(r"\brender(?:s|ed|ing)?\b", re.IGNORECASE)
+
+# ---------------------------------------------------------------------------
+# Item Detection Helpers
+# ---------------------------------------------------------------------------
+
+
+def is_item_start(line: str) -> bool:
+    """
+    Check if a line represents the start of a top-level item.
+    
+    Consistent with parse_items(), this function detects item starts by:
+    - Stripping leading whitespace with lstrip()
+    - Checking if the result starts with "- "
+    
+    This makes the detection tolerant of:
+    - Leading whitespace before the hyphen
+    - Any key appearing first (Type, ID, Name, etc.)
+    
+    Args:
+        line: The line to check (should not have trailing newline)
+    
+    Returns:
+        True if the line starts a new item, False otherwise
+    
+    Examples:
+        >>> is_item_start("- Type: Requirement")
+        True
+        >>> is_item_start("  - Type: Requirement")
+        True
+        >>> is_item_start("- ID: REQU.1")
+        True
+        >>> is_item_start("  ID: REQU.1")
+        False
+    """
+    stripped = line.lstrip()
+    return stripped.startswith("- ")
 
 # ---------------------------------------------------------------------------
 # Parsing
@@ -595,7 +643,7 @@ def apply_id_sequence_patch(original_text: str, id_map: Dict[str, str]) -> str:
     for Requirement items that have placeholder IDs.
     
     Note: Item indexing must match the order produced by parse_items(), which:
-    - Creates a standalone comment item for comments appearing before the first "- Type:" line
+    - Creates a standalone comment item for comments appearing before the first "- " line
     - Does NOT create standalone items for comments appearing between structured items
       (those are stored in the item's _order field instead)
     
@@ -615,7 +663,7 @@ def apply_id_sequence_patch(original_text: str, id_map: Dict[str, str]) -> str:
     # Track which item we're in (by counting ALL items as parse_items() does)
     item_index = -1
     in_item = False
-    # Track whether we've seen any structured item (starting with '- Type:')
+    # Track whether we've seen any structured item (starting with '- ')
     # to distinguish preamble comments (before first structured item) from
     # inter-item comments (which are stored in the previous item's _order)
     seen_structured_item = False
@@ -633,11 +681,28 @@ def apply_id_sequence_patch(original_text: str, id_map: Dict[str, str]) -> str:
             result.append(line)
             continue
         
-        # Start of a structured item
-        if line.startswith("- Type:"):
+        # Start of a structured item - use is_item_start() for consistency
+        if is_item_start(line):
             item_index += 1
             in_item = True
             seen_structured_item = True
+            
+            # Check if the first line contains an ID that needs sequencing
+            # Format: "- ID: REQU.TEST.X" or "  - ID: REQU.TEST.X"
+            rest = stripped[2:].strip()  # Skip "- "
+            if rest and ":" in rest:
+                key, value = rest.split(":", 1)
+                key = key.strip()
+                if key == "ID":
+                    id_val = value.strip()
+                    map_key = f"{id_val}@{item_index}"
+                    if map_key in id_map:
+                        # Replace the ID on the first line
+                        indent = line[:len(line) - len(line.lstrip())]
+                        new_id = id_map[map_key]
+                        result.append(f"{indent}- ID: {new_id}")
+                        continue
+            
             result.append(line)
             continue
         
@@ -1111,7 +1176,7 @@ def apply_verified_by_patch(original_text: str, req_verified_map: Dict[str, str]
     original text, with minimal disturbance to formatting and comments.
 
     We:
-    - Detect top-level items that start with "- Type: ...".
+    - Detect top-level items using is_item_start() for consistency with the parser
     - Track the Requirement ID for items whose ID starts with "REQU".
     - For those, either replace an existing "Verified_By:" line or insert a new
       one near the other key/value lines.
@@ -1156,7 +1221,7 @@ def apply_verified_by_patch(original_text: str, req_verified_map: Dict[str, str]
             for idx, line in enumerate(item_lines):
                 stripped = line.lstrip()
 
-                # Top-level "- Type: ..." line is always kept as-is
+                # Top-level "- Key: ..." line is always kept as-is
                 if idx == 0:
                     patched.append(line)
                     continue
@@ -1199,7 +1264,7 @@ def apply_verified_by_patch(original_text: str, req_verified_map: Dict[str, str]
                 if last_key_index != -1:
                     patched.append(insert_line)
                 else:
-                    # No keys found, insert after '- Type:' line
+                    # No keys found, insert after '- ...:' line
                     patched.insert(1, insert_line)
 
             result.extend(patched)
@@ -1214,16 +1279,26 @@ def apply_verified_by_patch(original_text: str, req_verified_map: Dict[str, str]
         current_req_id = None
 
     for line in lines:
-        # Detect top-level item start
-        if line.startswith("- Type: "):
+        # Detect top-level item start using is_item_start() for consistency
+        if is_item_start(line):
             # Flush previous block if any
             if in_item:
                 flush_item()
             in_item = True
             item_lines = [line]
-            # Parse the item type from "- Type: FOO"
-            current_type = line[len("- Type: "):].strip()
+            # Try to parse Type or ID if they appear on the first line
+            # Format can be "- Type: FOO" or "- ID: BAR" etc.
+            stripped = line.lstrip()
+            rest = stripped[2:].strip()  # Skip "- "
+            current_type = None
             current_req_id = None
+            if rest and ":" in rest:
+                key, value = rest.split(":", 1)
+                key = key.strip()
+                if key == "Type":
+                    current_type = value.strip()
+                elif key == "ID":
+                    current_req_id = value.strip()
             continue
 
         if in_item:
@@ -1233,6 +1308,9 @@ def apply_verified_by_patch(original_text: str, req_verified_map: Dict[str, str]
             if stripped.startswith("ID:"):
                 req_id_val = stripped[len("ID:"):].strip()
                 current_req_id = req_id_val
+            # Also look for Type if not found on first line
+            if current_type is None and stripped.startswith("Type:"):
+                current_type = stripped[len("Type:"):].strip()
             continue
 
         # Not inside an item; passthrough
