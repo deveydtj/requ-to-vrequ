@@ -16,52 +16,17 @@ Target Python version: 3.10.0+
 
 import sys
 import os
-import tempfile
 import subprocess
 import pytest
-
-# Add parent directory to path to import the module
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from generate_verification_yaml import (
     parse_items,
     build_id_sequence_map,
     apply_id_sequence_patch,
     sequence_requirement_ids,
-    generate_verification_items,
 )
 
-
-
-# Fixtures and helper functions
-
-@pytest.fixture
-def temp_yaml_file():
-    """Fixture to create and cleanup temporary YAML files."""
-    temp_files = []
-    
-    def _create_temp_file(content):
-        f = tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False)
-        temp_path = f.name
-        f.write(content)
-        f.close()
-        temp_files.append(temp_path)
-        return temp_path
-    
-    yield _create_temp_file
-    
-    # Cleanup
-    for path in temp_files:
-        if os.path.exists(path):
-            os.remove(path)
-
-
-def get_script_path():
-    """Get the path to the main script."""
-    return os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-        'generate_verification_yaml.py'
-    )
+from conftest import get_script_path
 
 
 # Unit tests for build_id_sequence_map()
