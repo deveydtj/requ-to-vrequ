@@ -527,10 +527,14 @@ def transform_text(req_text: str, is_advanced: bool, is_setting: bool) -> str:
       Otherwise, prefix with 'Verify '.
     - Plurality is determined from the remainder (ignoring classification prefix).
 
-    Verb normalization:
+    Verb normalization (applied to the post-rewrite text for consistency):
     - Replace 'shall render' with 'render/renders' depending on subject plurality.
     - For advanced (.BRDG./.DMGR.) setting semantics, and when applicable,
       replace 'shall set' or 'shall set to' with 'is/are set' or 'is/are set to'.
+    
+    All replacement checks and operations are performed on the rewritten text (after
+    first-line normalization) to ensure consistency and avoid edge cases where
+    first-line rewriting might change context.
     """
     if not req_text:
         return "Verify that the requirement is satisfied."
@@ -566,15 +570,17 @@ def transform_text(req_text: str, is_advanced: bool, is_setting: bool) -> str:
     joined = "\n".join(lines)
 
     # Normalize 'shall render' -> 'render'/'renders' (active voice)
-    if "shall render" in req_text:
+    # Check the post-rewrite text (joined) for consistency
+    if "shall render" in joined:
         joined = joined.replace("shall render", render_present)
 
     # Advanced Bridge / DMGR + setting semantics
     if is_advanced and is_setting:
         # Handle 'shall set to' first to avoid 'to to' duplication
-        if "shall set to" in req_text:
+        # Check the post-rewrite text (joined) for consistency
+        if "shall set to" in joined:
             joined = joined.replace("shall set to", f"{be} set to")
-        elif "shall set" in req_text:
+        elif "shall set" in joined:
             joined = joined.replace("shall set", f"{be} set")
 
     return joined
