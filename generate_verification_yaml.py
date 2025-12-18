@@ -96,6 +96,40 @@ def is_item_start(line: str) -> bool:
     stripped = line.lstrip()
     return stripped.startswith("- ")
 
+
+def parse_first_line_kv(line: str) -> Optional[Tuple[str, str]]:
+    """
+    Parse key-value pair from the first line of an item.
+    
+    Handles variable spacing after the hyphen and extracts the key and value
+    from lines like "- Type: Requirement" or "-  ID: REQU.1".
+    
+    Args:
+        line: A line that starts with "- " (after lstrip)
+    
+    Returns:
+        (key, value) tuple if a key-value pair is found, None otherwise
+    
+    Examples:
+        >>> parse_first_line_kv("- Type: Requirement")
+        ('Type', 'Requirement')
+        >>> parse_first_line_kv("  -  ID: REQU.1")
+        ('ID', 'REQU.1')
+        >>> parse_first_line_kv("- ")
+        None
+    """
+    stripped = line.lstrip()
+    if not stripped.startswith("- "):
+        return None
+    
+    # Skip "- " and any additional whitespace
+    rest = stripped[2:].lstrip()
+    if not rest or ":" not in rest:
+        return None
+    
+    key, value = rest.split(":", 1)
+    return (key.strip(), value.strip())
+
 # ---------------------------------------------------------------------------
 # Parsing
 # ---------------------------------------------------------------------------
@@ -689,22 +723,16 @@ def apply_id_sequence_patch(original_text: str, id_map: Dict[str, str]) -> str:
             
             # Check if the first line contains an ID that needs sequencing
             # Format: "- ID: REQU.TEST.X" or "  - ID: REQU.TEST.X" or "-  ID: ..."
-            # We need to handle variable spacing after the hyphen
-            if stripped.startswith("- "):
-                # Find where the content after "- " starts (skip variable whitespace)
-                rest = stripped[2:].lstrip()
-                if rest and ":" in rest:
-                    key, value = rest.split(":", 1)
-                    key = key.strip()
-                    if key == "ID":
-                        id_val = value.strip()
-                        map_key = f"{id_val}@{item_index}"
-                        if map_key in id_map:
-                            # Replace the ID on the first line, preserving original spacing
-                            indent = line[:len(line) - len(line.lstrip())]
-                            new_id = id_map[map_key]
-                            result.append(f"{indent}- ID: {new_id}")
-                            continue
+            kv = parse_first_line_kv(line)
+            if kv and kv[0] == "ID":
+                id_val = kv[1]
+                map_key = f"{id_val}@{item_index}"
+                if map_key in id_map:
+                    # Replace the ID on the first line, preserving original spacing
+                    indent = line[:len(line) - len(line.lstrip())]
+                    new_id = id_map[map_key]
+                    result.append(f"{indent}- ID: {new_id}")
+                    continue
             
             result.append(line)
             continue
@@ -1291,20 +1319,14 @@ def apply_verified_by_patch(original_text: str, req_verified_map: Dict[str, str]
             item_lines = [line]
             # Try to parse Type or ID if they appear on the first line
             # Format can be "- Type: FOO" or "-  ID: BAR" etc.
-            # We need to handle variable spacing after the hyphen
-            stripped = line.lstrip()
             current_type = None
             current_req_id = None
-            if stripped.startswith("- "):
-                # Find where the content after "- " starts (skip variable whitespace)
-                rest = stripped[2:].lstrip()
-                if rest and ":" in rest:
-                    key, value = rest.split(":", 1)
-                    key = key.strip()
-                    if key == "Type":
-                        current_type = value.strip()
-                    elif key == "ID":
-                        current_req_id = value.strip()
+            kv = parse_first_line_kv(line)
+            if kv:
+                if kv[0] == "Type":
+                    current_type = kv[1]
+                elif kv[0] == "ID":
+                    current_req_id = kv[1]
             continue
 
         if in_item:

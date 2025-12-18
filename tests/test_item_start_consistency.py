@@ -116,8 +116,9 @@ def test_id_sequencing_with_leading_whitespace():
         id_map = build_id_sequence_map(items)
         
         # Should have a mapping for REQU.TEST.X
-        assert any('REQU.TEST.X@' in key for key in id_map.keys()), \
-            "Expected mapping for REQU.TEST.X"
+        matching_keys = [k for k in id_map.keys() if 'REQU.TEST.X@' in k]
+        assert matching_keys, \
+            f"Expected mapping for REQU.TEST.X, but found mappings: {list(id_map.keys())}"
         
         # Apply the patch
         patched_text = apply_id_sequence_patch(test_yaml, id_map)
