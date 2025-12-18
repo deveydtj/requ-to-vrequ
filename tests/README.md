@@ -58,9 +58,6 @@ Focused pytest tests for ID sequencing logic and end-to-end behavior:
 
 #### End-to-End Integration Tests:
 - **test_end_to_end_with_verification_and_traced_to**: Full pipeline with verification generation and Traced_To copying
-- **test_end_to_end_cli_no_sequence_flag**: --no-sequence flag disables sequencing
-- **test_end_to_end_cli_sequence_log_flag**: --sequence-log flag prints sequencing info
-- **test_end_to_end_cli_no_sequence_with_sequence_log**: Combined flags behavior
 
 ### test_cli_flags.py
 
