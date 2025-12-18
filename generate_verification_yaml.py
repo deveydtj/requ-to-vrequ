@@ -316,10 +316,7 @@ def generate_verification_id(req_id: str) -> str:
     REQU.DIS.UI.1 -> VREQU.DIS.UI.1
     REQU.DMGR.STATE.2.DMGR.MODE -> VREQU.DMGR.STATE.2.DMGR.MODE
     """
-    req_id = req_id.strip()
-    if req_id.startswith("REQ"):
-        return "V" + req_id
-    return "V" + req_id
+    return "V" + req_id.strip()
 
 
 def has_standalone_set(name: str) -> bool:
@@ -1263,7 +1260,6 @@ def apply_verified_by_patch(original_text: str, req_verified_map: Dict[str, str]
 
             # Some heuristics for where to insert if missing
             last_key_index = -1
-            text_key_index = -1
             name_key_index = -1
 
             # First pass: we just scan and patch/remember positions
@@ -1287,7 +1283,7 @@ def apply_verified_by_patch(original_text: str, req_verified_map: Dict[str, str]
                 # We only look at simple "Key: value" patterns at this level.
                 m_key = re.match(r"^(\s*)([A-Za-z0-9_]+)\s*:", line)
                 if m_key:
-                    key_indent, key_name = m_key.group(1), m_key.group(2)
+                    key_name = m_key.group(2)
                     # Always track the last key we see (even if it's a block scalar start)
                     last_key_index = len(patched)
                     if key_name == "Name":
