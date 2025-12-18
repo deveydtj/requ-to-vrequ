@@ -32,10 +32,9 @@ def temp_yaml_file():
     
     def _create_temp_file(content):
         """Create a temporary YAML file with the given content."""
-        f = tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False)
-        temp_path = f.name
-        f.write(content)
-        f.close()
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+            temp_path = f.name
+            f.write(content)
         temp_files.append(temp_path)
         return temp_path
     
