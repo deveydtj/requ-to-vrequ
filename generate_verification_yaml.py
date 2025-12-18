@@ -615,6 +615,10 @@ def apply_id_sequence_patch(original_text: str, id_map: Dict[str, str]) -> str:
     # Track which item we're in (by counting ALL items as parse_items() does)
     item_index = -1
     in_item = False
+    # Track whether we've seen any structured item (starting with '- Type:')
+    # to distinguish preamble comments (before first structured item) from
+    # inter-item comments (which are stored in the previous item's _order)
+    seen_structured_item = False
     
     for line in lines:
         # Detect start of new item (including standalone comments)
@@ -623,7 +627,8 @@ def apply_id_sequence_patch(original_text: str, id_map: Dict[str, str]) -> str:
         # Standalone comment before the first structured item
         # Note: Comments between structured items are NOT standalone items -
         # they're stored in the previous item's _order field by parse_items()
-        if item_index == -1 and stripped.startswith("#"):
+        # Each preamble comment line is treated as a separate item by parse_items()
+        if not seen_structured_item and stripped.startswith("#"):
             item_index += 1
             result.append(line)
             continue
@@ -632,6 +637,7 @@ def apply_id_sequence_patch(original_text: str, id_map: Dict[str, str]) -> str:
         if line.startswith("- Type:"):
             item_index += 1
             in_item = True
+            seen_structured_item = True
             result.append(line)
             continue
         

@@ -465,3 +465,129 @@ def test_end_to_end_with_verification_and_traced_to(temp_yaml_file):
             os.remove(output_path)
 
 
+def test_apply_id_sequence_patch_multiple_preamble_comments(temp_yaml_file):
+    """
+    Test that apply_id_sequence_patch() correctly handles files with multiple
+    preamble comments before the first structured item.
+    
+    This is a regression test for the bug where item_index was only incremented
+    once for the first preamble comment, causing indexing to diverge from
+    parse_items() which creates a separate item for each preamble comment.
+    """
+    test_yaml = """# First preamble comment
+# Second preamble comment
+# Third preamble comment
+
+- Type: Requirement
+  ID: REQU.TEST.1
+  Name: First requirement
+
+- Type: Requirement
+  ID: REQU.TEST.X
+  Name: Second requirement (placeholder)
+
+- Type: Requirement
+  ID: REQU.TEST.X
+  Name: Third requirement (placeholder)
+"""
+    
+    temp_path = temp_yaml_file(test_yaml)
+    items = parse_items(temp_path)
+    
+    # Verify parse_items creates 3 comment items + 3 requirement items = 6 items
+    assert len(items) == 6, f"Expected 6 items (3 comments + 3 requirements), got {len(items)}"
+    
+    # First 3 items should be standalone comments
+    for i in range(3):
+        assert "_comment" in items[i], f"Item {i} should be a comment"
+        assert len(items[i]) == 1, f"Comment item {i} should only have _comment field"
+    
+    # Build ID sequence map
+    id_map = build_id_sequence_map(items)
+    
+    # Verify the map was built correctly with item indices 3, 4, 5
+    # (items 0-2 are comments, items 3-5 are requirements)
+    # First requirement (index 3) has ID REQU.TEST.1 (no placeholder)
+    # Second requirement (index 4) has ID REQU.TEST.X -> should map to REQU.TEST.2
+    # Third requirement (index 5) has ID REQU.TEST.X -> should map to REQU.TEST.3
+    assert len(id_map) == 2, f"Should have 2 mappings for 2 placeholder IDs, got {len(id_map)}"
+    
+    # The map keys should be "REQU.TEST.X@4" and "REQU.TEST.X@5"
+    # because items 4 and 5 are the ones with placeholder IDs
+    assert "REQU.TEST.X@4" in id_map, "Should have mapping for item at index 4"
+    assert "REQU.TEST.X@5" in id_map, "Should have mapping for item at index 5"
+    assert id_map["REQU.TEST.X@4"] == "REQU.TEST.2", "First .X should map to .2"
+    assert id_map["REQU.TEST.X@5"] == "REQU.TEST.3", "Second .X should map to .3"
+    
+    # Apply the patch
+    sequenced_text = apply_id_sequence_patch(test_yaml, id_map)
+    
+    # Verify the output has the sequenced IDs
+    assert "ID: REQU.TEST.1" in sequenced_text, "Should preserve REQU.TEST.1"
+    assert "ID: REQU.TEST.2" in sequenced_text, "Should have REQU.TEST.2 (sequenced from first .X)"
+    assert "ID: REQU.TEST.3" in sequenced_text, "Should have REQU.TEST.3 (sequenced from second .X)"
+    
+    # Verify no .X remain
+    lines = sequenced_text.split('\n')
+    for line in lines:
+        if line.strip().startswith("ID:"):
+            assert ".X" not in line, f"Should not have .X in ID line: {line}"
+    
+    # Verify preamble comments are preserved
+    assert "# First preamble comment" in sequenced_text
+    assert "# Second preamble comment" in sequenced_text
+    assert "# Third preamble comment" in sequenced_text
+
+
+def test_apply_id_sequence_patch_single_preamble_comment(temp_yaml_file):
+    """Test that sequencing still works with exactly one preamble comment."""
+    test_yaml = """# Single preamble comment
+
+- Type: Requirement
+  ID: REQU.TEST.1
+  Name: First requirement
+
+- Type: Requirement
+  ID: REQU.TEST.X
+  Name: Second requirement
+"""
+    
+    temp_path = temp_yaml_file(test_yaml)
+    items = parse_items(temp_path)
+    id_map = build_id_sequence_map(items)
+    
+    # Should have 1 mapping
+    assert len(id_map) == 1
+    assert "REQU.TEST.X@2" in id_map  # index 2 (0=comment, 1=REQU.TEST.1, 2=REQU.TEST.X)
+    assert id_map["REQU.TEST.X@2"] == "REQU.TEST.2"
+    
+    sequenced_text = apply_id_sequence_patch(test_yaml, id_map)
+    assert "ID: REQU.TEST.2" in sequenced_text
+    assert "ID: REQU.TEST.X" not in sequenced_text
+
+
+def test_apply_id_sequence_patch_no_preamble_comments(temp_yaml_file):
+    """Test that sequencing still works with zero preamble comments."""
+    test_yaml = """- Type: Requirement
+  ID: REQU.TEST.1
+  Name: First requirement
+
+- Type: Requirement
+  ID: REQU.TEST.X
+  Name: Second requirement
+"""
+    
+    temp_path = temp_yaml_file(test_yaml)
+    items = parse_items(temp_path)
+    id_map = build_id_sequence_map(items)
+    
+    # Should have 1 mapping
+    assert len(id_map) == 1
+    assert "REQU.TEST.X@1" in id_map  # index 1 (0=REQU.TEST.1, 1=REQU.TEST.X)
+    assert id_map["REQU.TEST.X@1"] == "REQU.TEST.2"
+    
+    sequenced_text = apply_id_sequence_patch(test_yaml, id_map)
+    assert "ID: REQU.TEST.2" in sequenced_text
+    assert "ID: REQU.TEST.X" not in sequenced_text
+
+
