@@ -728,9 +728,21 @@ def apply_id_sequence_patch(original_text: str, id_map: Dict[str, str]) -> str:
                 id_val = kv[1]
                 map_key = f"{id_val}@{item_index}"
                 if map_key in id_map:
-                    # Replace the ID on the first line, preserving original spacing
-                    indent = line[:len(line) - len(line.lstrip())]
                     new_id = id_map[map_key]
+                    # Preserve all original spacing by finding and replacing only the ID value
+                    id_pos = line.find("ID:")
+                    if id_pos != -1:
+                        # Portion after "ID:"
+                        suffix = line[id_pos + 3:]
+                        # Replace only the old ID value within the suffix
+                        val_pos = suffix.find(id_val)
+                        if val_pos != -1:
+                            new_suffix = suffix[:val_pos] + new_id + suffix[val_pos + len(id_val):]
+                            new_line = line[:id_pos + 3] + new_suffix
+                            result.append(new_line)
+                            continue
+                    # Fallback: if structure is unexpected, use simple replacement
+                    indent = line[:len(line) - len(line.lstrip())]
                     result.append(f"{indent}- ID: {new_id}")
                     continue
             

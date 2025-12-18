@@ -250,6 +250,48 @@ def test_varied_spacing():
     print("✓ Varied spacing test passed")
 
 
+def test_id_sequencing_with_varied_spacing():
+    """Test that ID sequencing preserves varied spacing after the hyphen when ID is on first line."""
+    print("\nTesting ID sequencing with varied spacing after hyphen...")
+    
+    test_yaml = """-  ID: REQU.TEST.1
+  Type: Requirement
+  Name: First
+  Text: First requirement
+
+-   ID: REQU.TEST.X
+  Type: Requirement
+  Name: Second
+  Text: Second requirement
+"""
+    
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+        input_path = f.name
+        f.write(test_yaml)
+    
+    try:
+        items = parse_items(input_path)
+        id_map = build_id_sequence_map(items)
+        
+        # Apply the patch
+        patched_text = apply_id_sequence_patch(test_yaml, id_map)
+        
+        # Should have replaced REQU.TEST.X with REQU.TEST.2
+        assert 'REQU.TEST.2' in patched_text, "Expected REQU.TEST.2 in patched text"
+        assert 'REQU.TEST.X' not in patched_text, "REQU.TEST.X should be replaced"
+        
+        # Should preserve varied spacing after hyphen
+        assert '-  ID: REQU.TEST.1' in patched_text, \
+            "Should preserve two spaces after hyphen in first item"
+        assert '-   ID: REQU.TEST.2' in patched_text, \
+            "Should preserve three spaces after hyphen in second item"
+        
+        print("✓ ID sequencing with varied spacing test passed")
+        
+    finally:
+        os.remove(input_path)
+
+
 def test_end_to_end_with_formatting_variations():
     """Test the full pipeline with formatting variations."""
     print("\nTesting end-to-end with formatting variations...")
@@ -311,17 +353,16 @@ def test_end_to_end_with_formatting_variations():
         # Verify leading whitespace preserved for first item
         assert '  - Type: Requirement' in final_text
         
-        # Verify alternate ordering preserved for second item
+        # Verify alternate ordering preserved for second item:
+        # when the item starts with "- ID: REQU.TEST.X", it should remain
+        # on the first line after sequencing as "- ID: REQU.TEST.2".
         lines = final_text.split('\n')
         found_id_first = False
-        for i, line in enumerate(lines):
-            if 'ID: REQU.TEST.2' in line and i > 0:
-                # Check if this ID line comes before Type line
-                if '- ID:' in line:
-                    found_id_first = True
-                    break
-        # Note: ID might not be on the first line after sequencing,
-        # but it should still appear in the item
+        for line in lines:
+            if line.lstrip().startswith('- ID: REQU.TEST.2'):
+                found_id_first = True
+                break
+        assert found_id_first, "Expected '- ID: REQU.TEST.2' to appear on the first line of the item"
         
         print("✓ End-to-end with formatting variations test passed")
         
@@ -342,6 +383,7 @@ def main():
         test_verified_by_patch_with_leading_whitespace()
         test_alternate_key_ordering()
         test_varied_spacing()
+        test_id_sequencing_with_varied_spacing()
         test_end_to_end_with_formatting_variations()
         
         print("\n" + "=" * 60)
