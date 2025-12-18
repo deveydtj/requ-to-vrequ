@@ -688,20 +688,23 @@ def apply_id_sequence_patch(original_text: str, id_map: Dict[str, str]) -> str:
             seen_structured_item = True
             
             # Check if the first line contains an ID that needs sequencing
-            # Format: "- ID: REQU.TEST.X" or "  - ID: REQU.TEST.X"
-            rest = stripped[2:].strip()  # Skip "- "
-            if rest and ":" in rest:
-                key, value = rest.split(":", 1)
-                key = key.strip()
-                if key == "ID":
-                    id_val = value.strip()
-                    map_key = f"{id_val}@{item_index}"
-                    if map_key in id_map:
-                        # Replace the ID on the first line
-                        indent = line[:len(line) - len(line.lstrip())]
-                        new_id = id_map[map_key]
-                        result.append(f"{indent}- ID: {new_id}")
-                        continue
+            # Format: "- ID: REQU.TEST.X" or "  - ID: REQU.TEST.X" or "-  ID: ..."
+            # We need to handle variable spacing after the hyphen
+            if stripped.startswith("- "):
+                # Find where the content after "- " starts (skip variable whitespace)
+                rest = stripped[2:].lstrip()
+                if rest and ":" in rest:
+                    key, value = rest.split(":", 1)
+                    key = key.strip()
+                    if key == "ID":
+                        id_val = value.strip()
+                        map_key = f"{id_val}@{item_index}"
+                        if map_key in id_map:
+                            # Replace the ID on the first line, preserving original spacing
+                            indent = line[:len(line) - len(line.lstrip())]
+                            new_id = id_map[map_key]
+                            result.append(f"{indent}- ID: {new_id}")
+                            continue
             
             result.append(line)
             continue
@@ -1287,18 +1290,21 @@ def apply_verified_by_patch(original_text: str, req_verified_map: Dict[str, str]
             in_item = True
             item_lines = [line]
             # Try to parse Type or ID if they appear on the first line
-            # Format can be "- Type: FOO" or "- ID: BAR" etc.
+            # Format can be "- Type: FOO" or "-  ID: BAR" etc.
+            # We need to handle variable spacing after the hyphen
             stripped = line.lstrip()
-            rest = stripped[2:].strip()  # Skip "- "
             current_type = None
             current_req_id = None
-            if rest and ":" in rest:
-                key, value = rest.split(":", 1)
-                key = key.strip()
-                if key == "Type":
-                    current_type = value.strip()
-                elif key == "ID":
-                    current_req_id = value.strip()
+            if stripped.startswith("- "):
+                # Find where the content after "- " starts (skip variable whitespace)
+                rest = stripped[2:].lstrip()
+                if rest and ":" in rest:
+                    key, value = rest.split(":", 1)
+                    key = key.strip()
+                    if key == "Type":
+                        current_type = value.strip()
+                    elif key == "ID":
+                        current_req_id = value.strip()
             continue
 
         if in_item:
