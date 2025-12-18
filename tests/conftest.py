@@ -60,16 +60,3 @@ def get_script_path():
         os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
         'generate_verification_yaml.py'
     )
-
-
-# Make get_script_path available as a fixture as well
-@pytest.fixture
-def script_path():
-    """
-    Fixture that provides the path to the main script.
-    
-    Usage:
-        def test_something(script_path):
-            result = subprocess.run([sys.executable, script_path, ...])
-    """
-    return get_script_path()
