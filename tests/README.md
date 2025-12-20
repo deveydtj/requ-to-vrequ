@@ -163,7 +163,7 @@ Output:
 - Type: DMGR Verification Requirement
   Parent_Req: 
   ID: VREQU.DMGR.TEST.1
-  Name: Verify the status is rendered.
+  Name: Verify the status is rendered
   Text: |
     (U) Verify the system renders the status.
   Verified_By: 
@@ -172,7 +172,7 @@ Output:
 - Type: DMGR Verification Requirement
   Parent_Req: 
   ID: VREQU.DMGR.TEST.2
-  Name: Verify the dashboard is rendered.
+  Name: Verify the dashboard is rendered
   Text: |
     (U) Verify the system renders the dashboard.
   Verified_By: 

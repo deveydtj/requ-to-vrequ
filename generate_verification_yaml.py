@@ -439,7 +439,7 @@ def transform_name_general(req_name: str) -> str:
       General behavior (non-setting semantics):
 
       - If the Name begins with 'Render ', convert to passive and prefix with 'Verify' or 'Verify the ':
-        'Render X in Y' -> 'Verify the X in Y is rendered.'
+        'Render X in Y' -> 'Verify the X in Y is rendered'
         If X already begins with 'the ' or 'The ', do not add an extra 'the'.
       - Otherwise: 'Verify <Name>'
       """
@@ -449,12 +449,12 @@ def transform_name_general(req_name: str) -> str:
         if rest.startswith("the ") or rest.startswith("The "):
             subject_phrase = rest
             be = choose_be_verb(subject_phrase)
-            return f"Verify {rest} {be} rendered."
+            return f"Verify {rest} {be} rendered"
         else:
             # Include a space so the determiner is tokenized correctly.
             subject_phrase = "the " + rest
             be = choose_be_verb(subject_phrase)
-            return f"Verify the {rest} {be} rendered."
+            return f"Verify the {rest} {be} rendered"
     return f"Verify {req_name}"
 
 

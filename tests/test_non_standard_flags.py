@@ -184,7 +184,7 @@ def test_end_to_end():
         
         # Verify standard field receives full transformation (TEST.4)
         # TEST.4 has both standard Name and Text
-        assert "Verify the dashboard is rendered." in output, "Should apply full transformation for standard fields"
+        assert "Verify the dashboard is rendered" in output, "Should apply full transformation for standard fields"
         
         # Verify TEST.3 has BRDG render issue (standard fields but contains "render")
         # TEST.3 has "shall set" so Text is standard, Name is standard "Set the mode"
