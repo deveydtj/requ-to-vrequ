@@ -49,8 +49,8 @@ def test_shall_set_single_line_advanced():
     # Should not contain 'shall set' after transformation
     assert "shall set" not in result, f"Expected 'shall set' to be replaced, got: {result}"
     
-    # Should contain 'is set' (singular form based on "the system")
-    assert "is set" in result, f"Expected 'is set' in output, got: {result}"
+    # Should contain 'sets' (singular active voice form based on "the system")
+    assert "sets" in result, f"Expected 'sets' in output, got: {result}"
 
 
 def test_shall_set_to_replacement():
@@ -62,8 +62,8 @@ def test_shall_set_to_replacement():
     assert "shall set to" not in result, f"Expected 'shall set to' to be replaced, got: {result}"
     assert "shall set" not in result, f"Expected 'shall set' to be replaced, got: {result}"
     
-    # Should contain 'is set to' (not 'is set to to')
-    assert "is set to" in result, f"Expected 'is set to' in output, got: {result}"
+    # Should contain 'sets to' (not 'sets to to')
+    assert "sets to" in result, f"Expected 'sets to' in output, got: {result}"
     assert "to to" not in result, f"Should not have duplicate 'to', got: {result}"
 
 
@@ -77,8 +77,8 @@ shall set the mode to active."""
     # Should not contain 'shall set' after transformation
     assert "shall set" not in result, f"Expected 'shall set' to be replaced, got: {result}"
     
-    # Should contain 'are set' (plural form based on "configurations")
-    assert "are set" in result, f"Expected 'are set' in output, got: {result}"
+    # Should contain 'set' (plural active voice form based on "configurations")
+    assert " set " in result or "\nset " in result, f"Expected 'set' in output, got: {result}"
 
 
 def test_case_sensitivity():

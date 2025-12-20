@@ -423,9 +423,9 @@ def choose_be_verb(phrase: str) -> str:
 def choose_present_verb(base_verb: str, phrase: str) -> str:
     """
     Return the correct present-tense verb form for the given phrase:
-    - Singular subject => 'renders'
-    - Plural subject   => 'render'
-    Works for 'render'; for other verbs, supply their singular 'verb+s' form if needed.
+    - Singular subject => 'renders' / 'sets'
+    - Plural subject   => 'render' / 'set'
+    Works for 'render', 'set', and other regular verbs.
     """
     plural = is_plural_subject_phrase(phrase)
     if base_verb == "render":
@@ -527,7 +527,7 @@ def transform_text(req_text: str, is_advanced: bool, is_setting: bool) -> str:
     Verb normalization (applied to the post-rewrite text for consistency):
     - Replace 'shall render' with 'render/renders' depending on subject plurality.
     - For advanced (.BRDG./.DMGR.) setting semantics, and when applicable,
-      replace 'shall set' or 'shall set to' with 'is/are set' or 'is/are set to'.
+      replace 'shall set' with 'set/sets' depending on subject plurality.
     
     All replacement checks and operations are performed on the rewritten text (after
     first-line normalization) to ensure consistency and avoid edge cases where
@@ -544,6 +544,7 @@ def transform_text(req_text: str, is_advanced: bool, is_setting: bool) -> str:
     subject_phrase = extract_subject_phrase(remainder)
     be = choose_be_verb(subject_phrase)
     render_present = choose_present_verb("render", subject_phrase)
+    set_present = choose_present_verb("set", subject_phrase)
 
     # Build the rewritten first line
     # Normalize first-word article capitalization after 'Verify'
@@ -576,9 +577,9 @@ def transform_text(req_text: str, is_advanced: bool, is_setting: bool) -> str:
         # Handle 'shall set to' first to avoid 'to to' duplication
         # Check the post-rewrite text (joined) for consistency
         if "shall set to" in joined:
-            joined = joined.replace("shall set to", f"{be} set to")
+            joined = joined.replace("shall set to", f"{set_present} to")
         elif "shall set" in joined:
-            joined = joined.replace("shall set", f"{be} set")
+            joined = joined.replace("shall set", set_present)
 
     return joined
 
