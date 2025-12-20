@@ -512,6 +512,35 @@ def extract_subject_phrase(line: str) -> str:
     return s[:m.start()].strip() if m else s
 
 
+def normalize_verification_text(text: str) -> str:
+    """
+    Apply verification-specific text normalization.
+    
+    This function handles:
+    1. Insert 'is rendered' between closing quote and ' in' pattern ('" in')
+       to fix grammar for color specifications like: label "fruit" in white
+       -> label "fruit" is rendered in white
+    2. Avoids duplication if 'is rendered' is already present
+    
+    Args:
+        text: The verification text to normalize
+        
+    Returns:
+        Normalized text with patterns fixed
+    """
+    if not text:
+        return text
+    
+    # Pattern: " in (closing quote, space, 'in')
+    # Only insert if 'is rendered in' is not already present in the relevant context
+    # Use a simple check: if the exact sequence '" is rendered in' exists, skip replacement
+    if '" in' in text and '" is rendered in' not in text:
+        # Replace '" in' with '" is rendered in'
+        text = text.replace('" in', '" is rendered in')
+    
+    return text
+
+
 def transform_text(req_text: str, is_advanced: bool, is_setting: bool) -> str:
     """
     Transform Requirement Text into Verification Text.
@@ -580,6 +609,9 @@ def transform_text(req_text: str, is_advanced: bool, is_setting: bool) -> str:
             joined = joined.replace("shall set to", f"{set_present} to")
         elif "shall set" in joined:
             joined = joined.replace("shall set", set_present)
+
+    # Apply verification-specific normalization (e.g., '" in' pattern fix)
+    joined = normalize_verification_text(joined)
 
     return joined
 
