@@ -54,7 +54,8 @@ def test_end_to_end_quote_in_pattern():
         input_path = input_file.name
         input_file.write(input_content)
     
-    output_path = tempfile.mktemp(suffix='.yaml')
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as output_file:
+        output_path = output_file.name
     
     try:
         # Run the script

@@ -520,7 +520,7 @@ def normalize_verification_text(text: str) -> str:
     1. Insert 'is rendered' between closing quote and ' in' pattern ('" in')
        to fix grammar for color specifications like: label "fruit" in white
        -> label "fruit" is rendered in white
-    2. Avoids duplication if 'is rendered' is already present
+    2. Avoids duplication if 'is rendered' is already present for each occurrence
     
     Args:
         text: The verification text to normalize
@@ -531,14 +531,37 @@ def normalize_verification_text(text: str) -> str:
     if not text:
         return text
     
-    # Pattern: " in (closing quote, space, 'in')
-    # Only insert if 'is rendered in' is not already present in the relevant context
-    # Use a simple check: if the exact sequence '" is rendered in' exists, skip replacement
-    if '" in' in text and '" is rendered in' not in text:
-        # Replace '" in' with '" is rendered in'
-        text = text.replace('" in', '" is rendered in')
+    # Pattern: '" in' (double quote followed by space and the word 'in')
+    # Process each occurrence independently to handle mixed content correctly
+    # Strategy: Replace '" in' with '" is rendered in' only where not already present
     
-    return text
+    # Use a loop to process each occurrence, checking locally for duplication
+    result = text
+    search_pattern = '" in'
+    replace_pattern = '" is rendered in'
+    
+    # Process from end to start to avoid index shifting issues
+    pos = 0
+    while True:
+        pos = result.find(search_pattern, pos)
+        if pos == -1:
+            break
+        
+        # Check if this specific occurrence already has "is rendered" by looking at
+        # the context: check if "is rendered" appears immediately before the quote
+        # Look back from the quote to see if we already have "is rendered"
+        check_start = max(0, pos - 15)  # Look back up to 15 chars
+        context_before = result[check_start:pos]
+        
+        # If "is rendered" is not in the immediate context before this quote,
+        # then this occurrence needs the insertion
+        if 'is rendered' not in context_before:
+            result = result[:pos] + replace_pattern + result[pos + len(search_pattern):]
+            pos += len(replace_pattern)
+        else:
+            pos += len(search_pattern)
+    
+    return result
 
 
 def transform_text(req_text: str, is_advanced: bool, is_setting: bool) -> str:

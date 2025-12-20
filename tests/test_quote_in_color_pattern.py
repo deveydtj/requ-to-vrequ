@@ -118,20 +118,29 @@ def test_quote_in_pattern_case_sensitive_in():
     result = transform_text(req_text, is_advanced=False, is_setting=False)
     
     # Capitalized 'In' should not trigger the pattern
-    # This is based on typical case-sensitive handling in the codebase
-    assert '"fruit" In white' in result or '"fruit" is rendered In white' in result, \
-        f"Case sensitivity test, got: {result}"
+    # The pattern only matches lowercase 'in', so no transformation should occur
+    assert '"fruit" In white' in result, \
+        f"Pattern should not trigger for capitalized 'In', got: {result}"
+    assert '"fruit" is rendered In white' not in result, \
+        f"Should not insert 'is rendered' for capitalized 'In', got: {result}"
 
 
 def test_existing_is_rendered_in_before_pattern():
-    """Test no duplication when 'is rendered in' already exists before our pattern."""
-    req_text = 'The label is rendered "fruit" in white'
+    """Test correct handling when 'is rendered' already exists for one label but not another."""
+    req_text = 'The label "fruit" is rendered in white and "vegetable" in green'
     result = transform_text(req_text, is_advanced=False, is_setting=False)
     
-    # Even if 'is rendered' appears elsewhere, still insert for '" in' pattern
-    # unless it's immediately adjacent
-    # This test documents the expected behavior
-    assert 'is rendered' in result, f"Should contain 'is rendered', got: {result}"
+    # "fruit" already has "is rendered" - should not be duplicated
+    assert '"fruit" is rendered is rendered' not in result, \
+        f"Should not duplicate 'is rendered' for 'fruit', got: {result}"
+    
+    # "vegetable" does not have "is rendered" - should be inserted
+    assert '"vegetable" is rendered in green' in result, \
+        f"Should insert 'is rendered' for 'vegetable', got: {result}"
+    
+    # Full expected output
+    expected = 'Verify the label "fruit" is rendered in white and "vegetable" is rendered in green'
+    assert result == expected, f"Expected: '{expected}', Got: '{result}'"
 
 
 def test_must_pass_example_1():
