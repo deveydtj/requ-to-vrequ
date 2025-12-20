@@ -77,8 +77,8 @@ shall set the mode to active."""
     # Should not contain 'shall set' after transformation
     assert "shall set" not in result, f"Expected 'shall set' to be replaced, got: {result}"
     
-    # Should contain 'set' (plural active voice form based on "configurations")
-    assert " set " in result or "\nset " in result, f"Expected 'set' in output, got: {result}"
+    # Should contain 'set the mode' (plural active voice form based on "configurations")
+    assert "set the mode" in result, f"Expected 'set the mode' in output, got: {result}"
 
 
 def test_case_sensitivity():

@@ -37,8 +37,8 @@ def test_shall_set_plural_active_voice():
     # Should not contain 'shall set' after transformation
     assert "shall set" not in result, f"Expected 'shall set' to be replaced, got: {result}"
     
-    # Should contain 'set' (plural active voice), not 'are set' (passive voice)
-    assert " set " in result or result.endswith(" set"), f"Expected 'set' in output, got: {result}"
+    # Should contain 'set the timeout' (plural active voice), not 'are set' (passive voice)
+    assert "set the timeout" in result, f"Expected 'set the timeout' in output, got: {result}"
     assert "are set" not in result, f"Should not contain passive voice 'are set', got: {result}"
 
 
