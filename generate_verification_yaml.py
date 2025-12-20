@@ -520,7 +520,12 @@ def normalize_verification_text(text: str) -> str:
     1. Insert 'is rendered' between closing quote and ' in' pattern ('" in')
        to fix grammar for color specifications like: label "fruit" in white
        -> label "fruit" is rendered in white
-    2. Avoids duplication if 'is rendered' is already present for each occurrence
+    2. Avoids duplication by checking for 'is rendered' in the local context:
+       for each '" in' occurrence, looks back to find the matching opening quote,
+       then checks if 'is rendered' appears between the opening quote and the
+       pattern (inside quoted text) or before the opening quote (grammar structure).
+       Only skips insertion if 'is rendered' appears as part of the grammar
+       structure (before the opening quote), not inside the quoted text.
     
     Args:
         text: The verification text to normalize
@@ -540,22 +545,36 @@ def normalize_verification_text(text: str) -> str:
     search_pattern = '" in'
     replace_pattern = '" is rendered in'
     
-    # Process from end to start to avoid index shifting issues
+    # Process from start to end, adjusting position after each replacement
+    # to avoid index shifting issues
     pos = 0
     while True:
         pos = result.find(search_pattern, pos)
         if pos == -1:
             break
         
-        # Check if this specific occurrence already has "is rendered" by looking at
-        # the context: check if "is rendered" appears immediately before the quote
-        # Look back from the quote to see if we already have "is rendered"
-        check_start = max(0, pos - 15)  # Look back up to 15 chars
-        context_before = result[check_start:pos]
+        # Find the matching opening quote for this closing quote
+        # We search backwards from the closing quote position
+        opening_quote_pos = -1
+        for i in range(pos - 1, -1, -1):
+            if result[i] == '"':
+                opening_quote_pos = i
+                break
         
-        # If "is rendered" is not in the immediate context before this quote,
-        # then this occurrence needs the insertion
-        if 'is rendered' not in context_before:
+        if opening_quote_pos == -1:
+            # No opening quote found, skip this occurrence
+            pos += len(search_pattern)
+            continue
+        
+        # Check the context BEFORE the opening quote (not inside the quoted text)
+        # to see if "is rendered" is already part of the grammar structure
+        check_start = max(0, opening_quote_pos - 15)
+        context_before_opening = result[check_start:opening_quote_pos]
+        
+        # Only treat "is rendered" as already present if it appears before
+        # the opening quote (i.e., as part of the grammar structure)
+        # If "is rendered" is inside the quoted text, we should still insert it
+        if 'is rendered' not in context_before_opening:
             result = result[:pos] + replace_pattern + result[pos + len(search_pattern):]
             pos += len(replace_pattern)
         else:

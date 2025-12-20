@@ -143,6 +143,25 @@ def test_existing_is_rendered_in_before_pattern():
     assert result == expected, f"Expected: '{expected}', Got: '{result}'"
 
 
+def test_is_rendered_inside_quoted_text():
+    """Test that 'is rendered' inside quoted label text doesn't prevent insertion."""
+    req_text = 'The label "already is rendered" in green'
+    result = transform_text(req_text, is_advanced=False, is_setting=False)
+    
+    # "is rendered" appears inside the quoted text, not as part of grammar
+    # So it should still insert "is rendered" after the closing quote
+    assert '"already is rendered" is rendered in green' in result, \
+        f"Should insert 'is rendered' even when it appears inside quoted text, got: {result}"
+    
+    # Should not have duplication of the pattern
+    assert '"already is rendered" is rendered is rendered' not in result, \
+        f"Should not have duplicate insertion, got: {result}"
+    
+    # Full expected output
+    expected = 'Verify the label "already is rendered" is rendered in green'
+    assert result == expected, f"Expected: '{expected}', Got: '{result}'"
+
+
 def test_must_pass_example_1():
     """Must-pass example 1: Basic render insertion."""
     req_text = 'The Fruit button label "fruit" in white'
