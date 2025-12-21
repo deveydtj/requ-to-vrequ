@@ -520,12 +520,11 @@ def normalize_verification_text(text: str) -> str:
     1. Insert 'is rendered' between closing quote and ' in' pattern ('" in')
        to fix grammar for color specifications like: label "fruit" in white
        -> label "fruit" is rendered in white
-    2. Avoids duplication by checking for 'is rendered' in the local context:
-       for each '" in' occurrence, looks back to find the matching opening quote,
-       then checks if 'is rendered' appears between the opening quote and the
-       pattern (inside quoted text) or before the opening quote (grammar structure).
-       Only skips insertion if 'is rendered' appears as part of the grammar
-       structure (before the opening quote), not inside the quoted text.
+    2. Avoids duplication by checking for 'is rendered' in the 15 characters
+       before the opening quote for each '" in' occurrence. Only skips
+       insertion if 'is rendered' appears in this window, indicating it is
+       already part of the surrounding grammar structure rather than inside
+       the quoted text itself.
     
     Args:
         text: The verification text to normalize
