@@ -520,13 +520,14 @@ def normalize_verification_text(text: str) -> str:
     1. Insert 'is rendered' between closing quote and ' in' pattern ('" in')
        to fix grammar for color specifications like: label "fruit" in white
        -> label "fruit" is rendered in white
-    2. Avoids duplication using context-aware searching:
-       - For the first label: searches up to 150 characters before the opening
-         quote for "is rendered"
+    2. Avoids duplication by checking if '" is rendered in' already exists:
+       - For the first label: searches up to 150 characters before and including
+         the current pattern for the exact '" is rendered in' pattern
        - For subsequent labels: searches between the previous closing quote and
          current opening quote, but ignores "is rendered" within 15 chars of
          the previous quote (as that belongs to the previous label)
-       This handles long phrases, mixed content, and closely-spaced labels.
+       This handles long phrases, mixed content, closely-spaced labels, and
+       avoids false positives from unrelated "is rendered" in different clauses.
     
     Args:
         text: The verification text to normalize
@@ -577,9 +578,10 @@ def normalize_verification_text(text: str) -> str:
         # Strategy: Use different search strategies based on whether this is the
         # first label in the text or a subsequent one:
         # 
-        # - First label (no previous closing quote): Search widely (up to 150 chars)
-        #   before the opening quote. If "is rendered" exists, assume it describes
-        #   this label and skip insertion. This handles long descriptive phrases.
+        # - First label (no previous closing quote): Check if the exact pattern
+        #   '" is rendered in' already exists in a wide window (up to 150 chars).
+        #   This is more precise and avoids false positives from unrelated
+        #   "is rendered" in different clauses/subjects.
         # 
         # - Subsequent label (previous closing quote exists): Only search between
         #   the previous closing quote and the current opening quote, BUT skip
@@ -598,7 +600,10 @@ def normalize_verification_text(text: str) -> str:
             # First label: search widely before the opening quote (up to 150 chars)
             check_start = max(0, opening_quote_pos - 150)
             context_before_opening = text[check_start:opening_quote_pos]
-            skip_insertion = 'is rendered' in context_before_opening
+            
+            # Check if the pattern '" is rendered in' already exists
+            # This is more precise than just looking for "is rendered"
+            skip_insertion = '" is rendered in' in text[check_start:match_pos + len(search_pattern)]
         else:
             # Subsequent label: search only between previous closing quote and current opening quote
             # BUT ignore "is rendered" that appears right after the previous quote (it's for that label)
