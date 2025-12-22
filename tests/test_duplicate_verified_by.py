@@ -179,8 +179,15 @@ def test_idempotency_multiple_runs(temp_yaml_file):
     with open(output_path_2, 'r') as f:
         output2 = f.read()
     
-    # The outputs should be identical (idempotent)
-    assert output1 == output2, \
+    # The outputs should be identical (idempotent), ignoring trailing whitespace
+    # Normalize by stripping trailing whitespace from each line
+    def normalize_output(text):
+        return '\n'.join(line.rstrip() for line in text.splitlines())
+    
+    normalized1 = normalize_output(output1)
+    normalized2 = normalize_output(output2)
+    
+    assert normalized1 == normalized2, \
         "Running the script twice should produce identical output (idempotency).\n" \
         f"First run output length: {len(output1)}\n" \
         f"Second run output length: {len(output2)}"

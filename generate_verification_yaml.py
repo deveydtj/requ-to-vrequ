@@ -1057,10 +1057,10 @@ def generate_verification_items(items: List[Dict[str, str]]) -> List[Dict[str, s
 
         ver_id = generate_verification_id(req_id)
 
-        # --- Update the Requirement itself (set Verified_By) ---
-        updated_req = dict(item)  # shallow copy to preserve other fields
-        updated_req["Verified_By"] = ver_id
-        result.append(updated_req)
+        # --- Pass through the original Requirement unchanged ---
+        # The Verified_By field will be added/updated by apply_verified_by_patch()
+        # which operates on the original text to maintain formatting and comments
+        result.append(item)
 
         # --- Create the Verification item ---
         ver_item: Dict[str, str] = {}
@@ -1515,16 +1515,23 @@ def main() -> None:
     items_with_verifications = generate_verification_items(sequenced_items)
 
     # 6) Build a map of Requirement ID -> Verified_By (Verification ID)
-    #    Using the sequenced (updated) IDs
+    #    Extract this from the Verification items, not from Requirements
+    #    Each Verification ID is "V" + the Requirement ID, so we can reverse it
     req_verified_map: Dict[str, str] = {}
     for item in items_with_verifications:
-        req_id = item.get("ID", "").strip()
-        # Use ID-based detection instead of Type
-        if not is_requirement_id(req_id):
-            continue
-        ver_id = item.get("Verified_By", "").strip()
-        if ver_id:
-            req_verified_map[req_id] = ver_id
+        item_type = item.get("Type", "").strip()
+        # Check if this is a Verification item
+        if item_type in {
+            "Verification",
+            "DMGR Verification Requirement",
+            "BRDG Verification Requirement"
+        }:
+            ver_id = item.get("ID", "").strip()
+            # Verification IDs start with "VREQU", corresponding Requirement IDs start with "REQU"
+            if ver_id.startswith("VREQU"):
+                # Remove the "V" prefix to get the Requirement ID
+                req_id = ver_id[1:]  # "VREQU.TEST.1" -> "REQU.TEST.1"
+                req_verified_map[req_id] = ver_id
 
     # Collect IDs of any existing Verification items so we don't duplicate them
     # if the script is run multiple times.

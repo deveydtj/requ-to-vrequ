@@ -330,13 +330,19 @@ def test_end_to_end_with_formatting_variations():
         sequenced_items = sequence_requirement_ids(items, id_map)
         items_with_ver = generate_verification_items(sequenced_items)
         
-        # Build Verified_By map
+        # Build Verified_By map from Verification items (not from Requirements)
         req_verified_map = {}
         for item in items_with_ver:
-            req_id = item.get('ID', '').strip()
-            if req_id.startswith('REQU'):
-                ver_id = item.get('Verified_By', '').strip()
-                if ver_id:
+            item_type = item.get('Type', '').strip()
+            if item_type in {
+                'Verification',
+                'DMGR Verification Requirement',
+                'BRDG Verification Requirement'
+            }:
+                ver_id = item.get('ID', '').strip()
+                if ver_id.startswith('VREQU'):
+                    # Remove the "V" prefix to get the Requirement ID
+                    req_id = ver_id[1:]  # "VREQU.TEST.1" -> "REQU.TEST.1"
                     req_verified_map[req_id] = ver_id
         
         # Apply Verified_By patch
