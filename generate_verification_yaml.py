@@ -520,11 +520,13 @@ def normalize_verification_text(text: str) -> str:
     1. Insert 'is rendered' between closing quote and ' in' pattern ('" in')
        to fix grammar for color specifications like: label "fruit" in white
        -> label "fruit" is rendered in white
-    2. Avoids duplication by checking for 'is rendered' in a narrow window
-       (40 characters) before the opening quote, excluding any text before a
-       previous closing quote. Additionally checks for clause separators
-       (and, or, but) that indicate the "is rendered" is in a different clause
-       and unrelated to the current label.
+    2. Avoids duplication using context-aware searching:
+       - For the first label: searches up to 150 characters before the opening
+         quote for "is rendered"
+       - For subsequent labels: searches between the previous closing quote and
+         current opening quote, but ignores "is rendered" within 15 chars of
+         the previous quote (as that belongs to the previous label)
+       This handles long phrases, mixed content, and closely-spaced labels.
     
     Args:
         text: The verification text to normalize
@@ -571,12 +573,18 @@ def normalize_verification_text(text: str) -> str:
             continue
         
         # Check if "is rendered" already exists specifically for this label.
-        # We need to be careful to only detect "is rendered" that's actually
-        # describing THIS label, not some unrelated earlier clause.
-        #
-        # Strategy: Check if "is rendered" appears close to the opening quote
-        # (within 40 characters) AND there are no clause separators (like "and")
-        # between them that would indicate they're in separate clauses.
+        # 
+        # Strategy: Use different search strategies based on whether this is the
+        # first label in the text or a subsequent one:
+        # 
+        # - First label (no previous closing quote): Search widely (up to 150 chars)
+        #   before the opening quote. If "is rendered" exists, assume it describes
+        #   this label and skip insertion. This handles long descriptive phrases.
+        # 
+        # - Subsequent label (previous closing quote exists): Only search between
+        #   the previous closing quote and the current opening quote, BUT skip
+        #   any "is rendered" that appears immediately after the previous quote
+        #   (within 15 chars) as that belongs to the previous label.
         
         # Find the previous closing quote (if any) before the current opening quote
         prev_closing_quote_pos = -1
@@ -585,32 +593,37 @@ def normalize_verification_text(text: str) -> str:
                 prev_closing_quote_pos = i
                 break
         
-        # Check for "is rendered" in a narrow window (40 chars) before the opening quote
-        narrow_check_start = max(0, opening_quote_pos - 40)
-        # But don't search before the previous closing quote if there is one
-        if prev_closing_quote_pos != -1:
-            narrow_check_start = max(narrow_check_start, prev_closing_quote_pos + 1)
-        
-        context_near_opening = text[narrow_check_start:opening_quote_pos]
-        
-        # Check if "is rendered" appears in this context
-        if 'is rendered' in context_near_opening:
-            # Found "is rendered", but check if there are clause separators between
-            # it and the opening quote. Common separators: " and ", " or ", " but ", etc.
-            is_rendered_pos = context_near_opening.find('is rendered')
-            text_after_is_rendered = context_near_opening[is_rendered_pos + len('is rendered'):]
+        # Determine the search region based on whether this is the first label
+        if prev_closing_quote_pos == -1:
+            # First label: search widely before the opening quote (up to 150 chars)
+            check_start = max(0, opening_quote_pos - 150)
+            context_before_opening = text[check_start:opening_quote_pos]
+            skip_insertion = 'is rendered' in context_before_opening
+        else:
+            # Subsequent label: search only between previous closing quote and current opening quote
+            # BUT ignore "is rendered" that appears right after the previous quote (it's for that label)
+            check_start = prev_closing_quote_pos + 1
+            context_between_labels = text[check_start:opening_quote_pos]
             
-            # Check for clause separators that indicate a different clause
-            clause_separators = [' and ', ' or ', ' but ', ', and ', ', or ', ', but ']
-            has_separator = any(sep in text_after_is_rendered for sep in clause_separators)
+            # Find "is rendered" in this context
+            is_rendered_pos_in_context = context_between_labels.find('is rendered')
             
-            if has_separator:
-                # There's a clause separator, so "is rendered" is unrelated - insert
-                result_parts.append(text[index:match_pos])
-                result_parts.append(replace_pattern)
+            if is_rendered_pos_in_context != -1:
+                # Found "is rendered", but check if it's right after the previous closing quote
+                # (within 15 chars), which would mean it's part of the previous label
+                if is_rendered_pos_in_context < 15:
+                    # It's part of the previous label's pattern, so don't count it
+                    skip_insertion = False
+                else:
+                    # It's further away, so it's describing this label
+                    skip_insertion = True
             else:
-                # No separator, "is rendered" is for this label - skip insertion
-                result_parts.append(text[index:match_pos + len(search_pattern)])
+                # No "is rendered" found
+                skip_insertion = False
+        
+        # Apply the decision
+        if skip_insertion:
+            result_parts.append(text[index:match_pos + len(search_pattern)])
         else:
             # No "is rendered" found in the relevant context, insert it
             result_parts.append(text[index:match_pos])
