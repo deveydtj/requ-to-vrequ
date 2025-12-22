@@ -17,6 +17,16 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from generate_verification_yaml import parse_items
 
 
+# Helper function to extract verification items
+def get_verification_items(items):
+    """Extract verification items from parsed items list."""
+    return [item for item in items if item.get('Type', '').strip() in {
+        'Verification',
+        'DMGR Verification Requirement',
+        'BRDG Verification Requirement'
+    }]
+
+
 def test_end_to_end_name_quote_in_pattern():
     """End-to-end test with Name field containing '" in' patterns."""
     
@@ -85,11 +95,7 @@ def test_end_to_end_name_quote_in_pattern():
         items = parse_items(output_path)
         
         # Find verification items
-        verifications = [item for item in items if item.get('Type', '').strip() in {
-            'Verification',
-            'DMGR Verification Requirement',
-            'BRDG Verification Requirement'
-        }]
+        verifications = get_verification_items(items)
         
         # Verify we have 4 verification items
         assert len(verifications) == 4, f"Expected 4 verification items, got {len(verifications)}"
@@ -222,7 +228,7 @@ def test_end_to_end_name_idempotency():
         items1 = parse_items(output_path)
         
         # For idempotency, find the verification item from first run
-        verifications = [item for item in items1 if item.get('Type', '').strip() == 'Verification']
+        verifications = get_verification_items(items1)
         assert len(verifications) >= 1, "Should have at least one verification"
         
         ver_name = verifications[0]['Name']

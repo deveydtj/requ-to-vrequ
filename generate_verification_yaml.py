@@ -577,7 +577,7 @@ def normalize_quote_in_pattern(text: str) -> str:
     
     # Build the result using a list of segments to avoid repeated string
     # reconstruction inside the loop.
-    result_parts: List[str] = []
+    result_parts: list[str] = []
     n = len(text)
     index = 0
     
