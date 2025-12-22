@@ -548,48 +548,56 @@ def normalize_verification_text(text: str) -> str:
     # to avoid index shifting issues
     pos = 0
     while True:
-        pos = result.find(search_pattern, pos)
-        if pos == -1:
+    search_pattern = '" in'
+    replace_pattern = '" is rendered in'
+    
+    # Build the result using a list of segments to avoid repeated string
+    # reconstruction inside the loop.
+    result_parts: List[str] = []
+    n = len(text)
+    index = 0
+    
+    while index < n:
+        match_pos = text.find(search_pattern, index)
+        if match_pos == -1:
+            # No more matches; append the remainder and finish
+            result_parts.append(text[index:])
             break
         
-        # Find the matching opening quote for this specific closing quote
-        # at position `pos`. We scan from the start of the string up to `pos`
-        # and track quote state so nested quotes are handled correctly.
+        # Find the matching opening quote for this closing quote
+        # We search backwards from the closing quote position
         opening_quote_pos = -1
-        in_quote = False
-        last_opening_quote_pos = -1
-        for i, ch in enumerate(result[:pos + 1]):
-            if ch == '"':
-                if not in_quote:
-                    in_quote = True
-                    last_opening_quote_pos = i
-                else:
-                    # This is a closing quote for the last opening quote
-                    if i == pos:
-                        opening_quote_pos = last_opening_quote_pos
-                        break
-                    in_quote = False
+        for i in range(match_pos - 1, -1, -1):
+            if text[i] == '"':
+                opening_quote_pos = i
+                break
         
         if opening_quote_pos == -1:
-            # No matching opening quote found, skip this occurrence
-            pos += len(search_pattern)
+            # No opening quote found; keep this occurrence as-is
+            result_parts.append(text[index:match_pos + len(search_pattern)])
+            index = match_pos + len(search_pattern)
             continue
         
         # Check the context BEFORE the opening quote (not inside the quoted text)
         # to see if "is rendered" is already part of the grammar structure
         check_start = max(0, opening_quote_pos - 15)
-        context_before_opening = result[check_start:opening_quote_pos]
+        context_before_opening = text[check_start:opening_quote_pos]
         
         # Only treat "is rendered" as already present if it appears before
         # the opening quote (i.e., as part of the grammar structure)
         # If "is rendered" is inside the quoted text, we should still insert it
         if 'is rendered' not in context_before_opening:
-            result = result[:pos] + replace_pattern + result[pos + len(search_pattern):]
-            pos += len(replace_pattern)
+            # Append text up to the match, then the replacement pattern
+            result_parts.append(text[index:match_pos])
+            result_parts.append(replace_pattern)
         else:
-            pos += len(search_pattern)
+            # Keep this occurrence unchanged
+            result_parts.append(text[index:match_pos + len(search_pattern)])
+        
+        # Advance past the matched pattern in the original text
+        index = match_pos + len(search_pattern)
     
-    return result
+    return ''.join(result_parts)
 
 
 def transform_text(req_text: str, is_advanced: bool, is_setting: bool) -> str:
