@@ -593,7 +593,10 @@ def normalize_verification_text(text: str) -> str:
         context_before_opening = text[check_start:opening_quote_pos]
         
         # Check if "is rendered" appears in the context
-        is_rendered_pos_in_context = context_before_opening.find('is rendered')
+        # Use rfind to get the LAST (nearest) occurrence, not the first one.
+        # This is important for multiple labels in sequence - we want the nearest
+        # "is rendered" to determine if it belongs to the current label or a previous one.
+        is_rendered_pos_in_context = context_before_opening.rfind('is rendered')
         
         if is_rendered_pos_in_context != -1:
             # Found "is rendered" in the context. Calculate its absolute position.
