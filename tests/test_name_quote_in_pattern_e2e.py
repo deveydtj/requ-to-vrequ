@@ -207,10 +207,6 @@ def test_end_to_end_name_idempotency():
         )
         assert result1.returncode == 0, f"First run failed: {result1.stderr}"
         
-        # Read the first output
-        with open(output_path, 'r') as f:
-            first_output = f.read()
-        
         # Run the script again using the output as input
         result2 = subprocess.run(
             ['python', script_path, output_path, output_path],
@@ -219,11 +215,6 @@ def test_end_to_end_name_idempotency():
         )
         assert result2.returncode == 0, f"Second run failed: {result2.stderr}"
         
-        # Read the second output
-        with open(output_path, 'r') as f:
-            second_output = f.read()
-        
-        # The outputs should be identical (idempotency)
         # Parse both to compare verification items
         items1 = parse_items(output_path)
         
