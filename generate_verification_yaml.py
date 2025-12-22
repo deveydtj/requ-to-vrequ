@@ -520,11 +520,11 @@ def normalize_verification_text(text: str) -> str:
     1. Insert 'is rendered' between closing quote and ' in' pattern ('" in')
        to fix grammar for color specifications like: label "fruit" in white
        -> label "fruit" is rendered in white
-    2. Avoids duplication by checking for 'is rendered' in the 15 characters
-       before the opening quote for each '" in' occurrence. Only skips
-       insertion if 'is rendered' appears in this window, indicating it is
-       already part of the surrounding grammar structure rather than inside
-       the quoted text itself.
+    2. Avoids duplication by checking for 'is rendered' before the opening quote
+       (up to 100 chars back or from the previous closing quote). When found,
+       checks if there's a closing quote between it and the current opening quote
+       to determine if it belongs to a different label. This handles both cases
+       with adjectives ("is rendered clearly") and mixed content scenarios.
     
     Args:
         text: The verification text to normalize
@@ -536,6 +536,7 @@ def normalize_verification_text(text: str) -> str:
         return text
     
     # Pattern: '" in' (double quote followed by space and the word 'in')
+    # Note: This pattern naturally excludes '" is rendered in' which is good!
     # Process each occurrence independently to handle mixed content correctly
     # Strategy: Replace '" in' with '" is rendered in' only where not already present
     
@@ -555,7 +556,7 @@ def normalize_verification_text(text: str) -> str:
             result_parts.append(text[index:])
             break
         
-        # Find the matching opening quote for this closing quote
+        # Find the matching opening quote for this closing quote at match_pos
         # We search backwards from the closing quote position
         opening_quote_pos = -1
         for i in range(match_pos - 1, -1, -1):
@@ -569,21 +570,49 @@ def normalize_verification_text(text: str) -> str:
             index = match_pos + len(search_pattern)
             continue
         
-        # Check the context BEFORE the opening quote (not inside the quoted text)
-        # to see if "is rendered" is already part of the grammar structure
-        check_start = max(0, opening_quote_pos - 15)
+        # Check if "is rendered" already exists in the grammar for this label.
+        # We check in the context BEFORE the opening quote to handle cases like:
+        # "The label is rendered clearly \"fruit\" in white"
+        # where "is rendered" appears before the label with possible adjectives.
+        #
+        # To avoid false positives from previous labels (e.g., in mixed content like
+        # "\"fruit\" is rendered in white and \"vegetable\" in green"), we check:
+        # If there's a closing quote between any found "is rendered" and the current
+        # opening quote, that "is rendered" belongs to a different label.
+        
+        # Find the previous closing quote (if any) before the current opening quote
+        prev_closing_quote_pos = -1
+        for i in range(opening_quote_pos - 1, -1, -1):
+            if text[i] == '"':
+                prev_closing_quote_pos = i
+                break
+        
+        # Search for "is rendered" up to 100 chars back from the opening quote
+        # (but don't go before the start of the text)
+        check_start = max(0, opening_quote_pos - 100)
         context_before_opening = text[check_start:opening_quote_pos]
         
-        # Only treat "is rendered" as already present if it appears before
-        # the opening quote (i.e., as part of the grammar structure)
-        # If "is rendered" is inside the quoted text, we should still insert it
-        if 'is rendered' not in context_before_opening:
-            # Append text up to the match, then the replacement pattern
+        # Check if "is rendered" appears in the context
+        is_rendered_pos_in_context = context_before_opening.find('is rendered')
+        
+        if is_rendered_pos_in_context != -1:
+            # Found "is rendered" in the context. Calculate its absolute position.
+            is_rendered_abs_pos = check_start + is_rendered_pos_in_context
+            
+            # If there's a previous closing quote AND "is rendered" comes after it,
+            # then "is rendered" belongs to that previous label, not this one.
+            # In this case, we SHOULD insert "is rendered" for the current label.
+            if prev_closing_quote_pos != -1 and is_rendered_abs_pos > prev_closing_quote_pos:
+                # "is rendered" is after a closing quote, so it's for a different label
+                result_parts.append(text[index:match_pos])
+                result_parts.append(replace_pattern)
+            else:
+                # "is rendered" is before any closing quote, so it's for THIS label
+                result_parts.append(text[index:match_pos + len(search_pattern)])
+        else:
+            # No "is rendered" found, insert it
             result_parts.append(text[index:match_pos])
             result_parts.append(replace_pattern)
-        else:
-            # Keep this occurrence unchanged
-            result_parts.append(text[index:match_pos + len(search_pattern)])
         
         # Advance past the matched pattern in the original text
         index = match_pos + len(search_pattern)
