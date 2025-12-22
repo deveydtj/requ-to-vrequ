@@ -552,16 +552,26 @@ def normalize_verification_text(text: str) -> str:
         if pos == -1:
             break
         
-        # Find the matching opening quote for this closing quote
-        # We search backwards from the closing quote position
+        # Find the matching opening quote for this specific closing quote
+        # at position `pos`. We scan from the start of the string up to `pos`
+        # and track quote state so nested quotes are handled correctly.
         opening_quote_pos = -1
-        for i in range(pos - 1, -1, -1):
-            if result[i] == '"':
-                opening_quote_pos = i
-                break
+        in_quote = False
+        last_opening_quote_pos = -1
+        for i, ch in enumerate(result[:pos + 1]):
+            if ch == '"':
+                if not in_quote:
+                    in_quote = True
+                    last_opening_quote_pos = i
+                else:
+                    # This is a closing quote for the last opening quote
+                    if i == pos:
+                        opening_quote_pos = last_opening_quote_pos
+                        break
+                    in_quote = False
         
         if opening_quote_pos == -1:
-            # No opening quote found, skip this occurrence
+            # No matching opening quote found, skip this occurrence
             pos += len(search_pattern)
             continue
         
