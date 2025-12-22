@@ -1007,7 +1007,11 @@ def has_brdg_render_issue(ver_name: str, ver_text: str) -> bool:
 def generate_verification_items(items: List[Dict[str, str]]) -> List[Dict[str, str]]:
     """
     For each Requirement item that matches the scope rules, generate a
-    corresponding Verification item and update the Requirement's Verified_By.
+    corresponding Verification item.
+
+    Note: This function does NOT modify the Requirement items themselves.
+    The Verified_By field is added to Requirements via apply_verified_by_patch()
+    which operates on the original text to preserve formatting and comments.
 
     Scope rules:
     - ID must start with 'REQU' (Type is no longer used for detection)
