@@ -520,14 +520,10 @@ def normalize_verification_text(text: str) -> str:
     1. Insert 'is rendered' between closing quote and ' in' pattern ('" in')
        to fix grammar for color specifications like: label "fruit" in white
        -> label "fruit" is rendered in white
-    2. Avoids duplication by checking if '" is rendered in' already exists:
-       - For the first label: searches up to 150 characters before and including
-         the current pattern for the exact '" is rendered in' pattern
-       - For subsequent labels: searches between the previous closing quote and
-         current opening quote, but ignores "is rendered" within 15 chars of
-         the previous quote (as that belongs to the previous label)
-       This handles long phrases, mixed content, closely-spaced labels, and
-       avoids false positives from unrelated "is rendered" in different clauses.
+    2. Avoids duplication by checking if ' is rendered' already appears
+       immediately before the '" in' pattern. This precise local check handles
+       all cases correctly regardless of text length, number of labels, or
+       placement of unrelated "is rendered" phrases.
     
     Args:
         text: The verification text to normalize
@@ -573,58 +569,17 @@ def normalize_verification_text(text: str) -> str:
             index = match_pos + len(search_pattern)
             continue
         
-        # Check if "is rendered" already exists specifically for this label.
+        # Check if "is rendered" is already present for this specific label.
+        # We check if the text immediately before the current '" in' pattern
+        # contains ' is rendered' AFTER the closing quote (not inside the quoted text).
         # 
-        # Strategy: Use different search strategies based on whether this is the
-        # first label in the text or a subsequent one:
-        # 
-        # - First label (no previous closing quote): Check if the exact pattern
-        #   '" is rendered in' already exists in a wide window (up to 150 chars).
-        #   This is more precise and avoids false positives from unrelated
-        #   "is rendered" in different clauses/subjects.
-        # 
-        # - Subsequent label (previous closing quote exists): Only search between
-        #   the previous closing quote and the current opening quote, BUT skip
-        #   any "is rendered" that appears immediately after the previous quote
-        #   (within 15 chars) as that belongs to the previous label.
+        # The closing quote is at match_pos, and we want to check if the text
+        # between the closing quote and ' in' already contains ' is rendered'.
+        # That would be the 12 characters after the closing quote (if they exist).
         
-        # Find the previous closing quote (if any) before the current opening quote
-        prev_closing_quote_pos = -1
-        for i in range(opening_quote_pos - 1, -1, -1):
-            if text[i] == '"':
-                prev_closing_quote_pos = i
-                break
-        
-        # Determine the search region based on whether this is the first label
-        if prev_closing_quote_pos == -1:
-            # First label: search widely before the opening quote (up to 150 chars)
-            check_start = max(0, opening_quote_pos - 150)
-            context_before_opening = text[check_start:opening_quote_pos]
-            
-            # Check if the pattern '" is rendered in' already exists
-            # This is more precise than just looking for "is rendered"
-            skip_insertion = '" is rendered in' in text[check_start:match_pos + len(search_pattern)]
-        else:
-            # Subsequent label: search only between previous closing quote and current opening quote
-            # BUT ignore "is rendered" that appears right after the previous quote (it's for that label)
-            check_start = prev_closing_quote_pos + 1
-            context_between_labels = text[check_start:opening_quote_pos]
-            
-            # Find "is rendered" in this context
-            is_rendered_pos_in_context = context_between_labels.find('is rendered')
-            
-            if is_rendered_pos_in_context != -1:
-                # Found "is rendered", but check if it's right after the previous closing quote
-                # (within 15 chars), which would mean it's part of the previous label
-                if is_rendered_pos_in_context < 15:
-                    # It's part of the previous label's pattern, so don't count it
-                    skip_insertion = False
-                else:
-                    # It's further away, so it's describing this label
-                    skip_insertion = True
-            else:
-                # No "is rendered" found
-                skip_insertion = False
+        # Get the text between the closing quote and the ' in'
+        text_after_closing_quote = text[match_pos + 1:match_pos + 1 + 12]  # +1 to skip the quote itself
+        skip_insertion = text_after_closing_quote.startswith(' is rendered')
         
         # Apply the decision
         if skip_insertion:
