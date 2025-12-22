@@ -10,7 +10,6 @@ This test suite validates that:
 import sys
 import os
 import subprocess
-import tempfile
 from typing import List
 
 # Add parent directory to path to import the module under test

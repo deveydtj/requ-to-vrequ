@@ -60,6 +60,13 @@ BASE_KEY_ORDER = [
 # Matches "render", "renders", "rendered", "rendering" as whole words (case-insensitive)
 BRDG_RENDER_PATTERN = re.compile(r"\brender(?:s|ed|ing)?\b", re.IGNORECASE)
 
+# Verification item types
+VERIFICATION_TYPES = {
+    "Verification",
+    "DMGR Verification Requirement",
+    "BRDG Verification Requirement"
+}
+
 # ---------------------------------------------------------------------------
 # Item Detection Helpers
 # ---------------------------------------------------------------------------
@@ -1237,11 +1244,7 @@ def write_items(path: str, items: List[Dict[str, str]]) -> None:
             prev_was_comment = False
 
             item_type = item.get("Type", "")
-            is_verification = item_type in {
-                "Verification",
-                "DMGR Verification Requirement",
-                "BRDG Verification Requirement"
-            }
+            is_verification = item_type in VERIFICATION_TYPES
 
             # Top-level item marker
             f.write(f"- Type: {item_type}\n")
@@ -1524,11 +1527,7 @@ def main() -> None:
     for item in items_with_verifications:
         item_type = item.get("Type", "").strip()
         # Check if this is a Verification item
-        if item_type in {
-            "Verification",
-            "DMGR Verification Requirement",
-            "BRDG Verification Requirement"
-        }:
+        if item_type in VERIFICATION_TYPES:
             ver_id = item.get("ID", "").strip()
             # Verification IDs start with "VREQU", corresponding Requirement IDs start with "REQU"
             if ver_id.startswith("VREQU"):
@@ -1542,11 +1541,7 @@ def main() -> None:
     existing_ver_ids = {
         item.get("ID", "").strip()
         for item in items
-        if item.get("Type", "").strip() in {
-            "Verification",
-            "DMGR Verification Requirement",
-            "BRDG Verification Requirement"
-        }
+        if item.get("Type", "").strip() in VERIFICATION_TYPES
     }
 
     # Filter out only the *new* Verification items that were created by
@@ -1564,11 +1559,7 @@ def main() -> None:
         
         item_type = item.get("Type", "").strip()
         # If this is a verification item
-        if item_type in {
-            "Verification",
-            "DMGR Verification Requirement",
-            "BRDG Verification Requirement"
-        }:
+        if item_type in VERIFICATION_TYPES:
             ver_id = item.get("ID", "").strip()
             # If it's a new verification, include any pending comments and the item
             if ver_id and ver_id not in existing_ver_ids:
