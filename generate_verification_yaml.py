@@ -512,6 +512,89 @@ def extract_subject_phrase(line: str) -> str:
     return s[:m.start()].strip() if m else s
 
 
+def normalize_verification_text(text: str) -> str:
+    """
+    Apply verification-specific text normalization.
+    
+    This function handles:
+    1. Insert 'is rendered' between closing quote and ' in' pattern ('" in')
+       to fix grammar for color specifications like: label "fruit" in white
+       -> label "fruit" is rendered in white
+    2. Avoids duplication by checking if ' is rendered' already appears
+       immediately before the '" in' pattern. This precise local check handles
+       all cases correctly regardless of text length, number of labels, or
+       placement of unrelated "is rendered" phrases.
+    
+    Args:
+        text: The verification text to normalize
+        
+    Returns:
+        Normalized text with patterns fixed
+    """
+    if not text:
+        return text
+    
+    # Pattern: '" in' (double quote followed by space and the word 'in')
+    # Note: This pattern naturally excludes '" is rendered in' which is good!
+    # Process each occurrence independently to handle mixed content correctly
+    # Strategy: Replace '" in' with '" is rendered in' only where not already present
+    
+    search_pattern = '" in'
+    replace_pattern = '" is rendered in'
+    
+    # Build the result using a list of segments to avoid repeated string
+    # reconstruction inside the loop.
+    result_parts: List[str] = []
+    n = len(text)
+    index = 0
+    
+    while index < n:
+        match_pos = text.find(search_pattern, index)
+        if match_pos == -1:
+            # No more matches; append the remainder and finish
+            result_parts.append(text[index:])
+            break
+        
+        # Find the matching opening quote for this closing quote at match_pos
+        # We search backwards from the closing quote position
+        opening_quote_pos = -1
+        for i in range(match_pos - 1, -1, -1):
+            if text[i] == '"':
+                opening_quote_pos = i
+                break
+        
+        if opening_quote_pos == -1:
+            # No opening quote found; keep this occurrence as-is
+            result_parts.append(text[index:match_pos + len(search_pattern)])
+            index = match_pos + len(search_pattern)
+            continue
+        
+        # Check if "is rendered" is already present for this specific label.
+        # We check if the text immediately before the current '" in' pattern
+        # contains ' is rendered' AFTER the closing quote (not inside the quoted text).
+        # 
+        # The closing quote is at match_pos, and we want to check if the text
+        # between the closing quote and ' in' already contains ' is rendered'.
+        # That would be the 12 characters after the closing quote (if they exist).
+        
+        # Get the text between the closing quote and the ' in'
+        text_after_closing_quote = text[match_pos + 1:match_pos + 1 + 12]  # +1 to skip the quote itself
+        skip_insertion = text_after_closing_quote.startswith(' is rendered')
+        
+        # Apply the decision
+        if skip_insertion:
+            result_parts.append(text[index:match_pos + len(search_pattern)])
+        else:
+            # No "is rendered" found in the relevant context, insert it
+            result_parts.append(text[index:match_pos])
+            result_parts.append(replace_pattern)
+        
+        # Advance past the matched pattern in the original text
+        index = match_pos + len(search_pattern)
+    
+    return ''.join(result_parts)
+
+
 def transform_text(req_text: str, is_advanced: bool, is_setting: bool) -> str:
     """
     Transform Requirement Text into Verification Text.
@@ -580,6 +663,9 @@ def transform_text(req_text: str, is_advanced: bool, is_setting: bool) -> str:
             joined = joined.replace("shall set to", f"{set_present} to")
         elif "shall set" in joined:
             joined = joined.replace("shall set", set_present)
+
+    # Apply verification-specific normalization (e.g., '" in' pattern fix)
+    joined = normalize_verification_text(joined)
 
     return joined
 
