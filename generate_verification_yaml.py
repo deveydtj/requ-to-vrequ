@@ -539,15 +539,6 @@ def normalize_verification_text(text: str) -> str:
     # Process each occurrence independently to handle mixed content correctly
     # Strategy: Replace '" in' with '" is rendered in' only where not already present
     
-    # Use a loop to process each occurrence, checking locally for duplication
-    result = text
-    search_pattern = '" in'
-    replace_pattern = '" is rendered in'
-    
-    # Process from start to end, adjusting position after each replacement
-    # to avoid index shifting issues
-    pos = 0
-    while True:
     search_pattern = '" in'
     replace_pattern = '" is rendered in'
     
