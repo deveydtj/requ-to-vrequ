@@ -449,20 +449,38 @@ def transform_name_general(req_name: str) -> str:
         'Render X in Y' -> 'Verify the X in Y is rendered'
         If X already begins with 'the ' or 'The ', do not add an extra 'the'.
       - Otherwise: 'Verify <Name>'
+      - Applies '" in' pattern normalization to ensure proper grammar
       """
-    if req_name.startswith("Render "):
-        rest = req_name[len("Render "):].strip()
+    # First, apply quote-in pattern normalization to the input
+    # This ensures '"fruit" in white' → '"fruit" is rendered in white'
+    normalized_input = normalize_quote_in_pattern(req_name)
+    
+    result = ""
+    if normalized_input.startswith("Render "):
+        rest = normalized_input[len("Render "):].strip()
         # Avoid double 'the' if the rest already begins with an article
         if rest.startswith("the ") or rest.startswith("The "):
             subject_phrase = rest
             be = choose_be_verb(subject_phrase)
-            return f"Verify {rest} {be} rendered"
+            # Check if "is rendered" or "are rendered" already appears in rest
+            # If so, don't add it again at the end
+            if " is rendered" in rest or " are rendered" in rest:
+                result = f"Verify {rest}"
+            else:
+                result = f"Verify {rest} {be} rendered"
         else:
             # Include a space so the determiner is tokenized correctly.
             subject_phrase = "the " + rest
             be = choose_be_verb(subject_phrase)
-            return f"Verify the {rest} {be} rendered"
-    return f"Verify {req_name}"
+            # Check if "is rendered" or "are rendered" already appears in rest
+            if " is rendered" in rest or " are rendered" in rest:
+                result = f"Verify the {rest}"
+            else:
+                result = f"Verify the {rest} {be} rendered"
+    else:
+        result = f"Verify {normalized_input}"
+    
+    return result
 
 
 def transform_name_setting(req_name: str) -> str:
@@ -474,8 +492,11 @@ def transform_name_setting(req_name: str) -> str:
     - Replace the last standalone 'to' with '<is/are> set to' depending on plurality.
     - If there is no standalone 'to', append '<is/are> set' at the end depending on plurality.
     - Prefix with 'Verify the ' unless the base already begins with 'The ' or 'the '.
+    - Applies '" in' pattern normalization to ensure proper grammar
     """
-    base = req_name
+    # First, apply quote-in pattern normalization to the input
+    normalized_input = normalize_quote_in_pattern(req_name)
+    base = normalized_input
 
     # Remove leading 'Set ' if present (case-sensitive)
     if base.startswith("Set "):
@@ -496,7 +517,9 @@ def transform_name_setting(req_name: str) -> str:
     if base.startswith("The ") or base.startswith("the "):
         prefix = "Verify "
 
-    return (prefix + new_base.strip())
+    result = prefix + new_base.strip()
+    
+    return result
 
 
 def extract_subject_phrase(line: str) -> str:
@@ -519,9 +542,9 @@ def extract_subject_phrase(line: str) -> str:
     return s[:m.start()].strip() if m else s
 
 
-def normalize_verification_text(text: str) -> str:
+def normalize_quote_in_pattern(text: str) -> str:
     """
-    Apply verification-specific text normalization.
+    Apply '" in' pattern normalization for Verification Name and Text fields.
     
     This function handles:
     1. Insert 'is rendered' between closing quote and ' in' pattern ('" in')
@@ -532,8 +555,16 @@ def normalize_verification_text(text: str) -> str:
        all cases correctly regardless of text length, number of labels, or
        placement of unrelated "is rendered" phrases.
     
+    This transformation applies to both Verification Name and Text fields to
+    ensure consistent grammar across all generated verification items.
+    
+    Note: The pattern matching looks for '" in' (quote-space-in), so text like
+    "result in error" in white is correctly handled - the word "in" inside the
+    quoted string does not trigger the pattern, only the '" in' after the closing
+    quote does, which is the intended behavior.
+    
     Args:
-        text: The verification text to normalize
+        text: The verification name or text to normalize
         
     Returns:
         Normalized text with patterns fixed
@@ -672,7 +703,7 @@ def transform_text(req_text: str, is_advanced: bool, is_setting: bool) -> str:
             joined = joined.replace("shall set", set_present)
 
     # Apply verification-specific normalization (e.g., '" in' pattern fix)
-    joined = normalize_verification_text(joined)
+    joined = normalize_quote_in_pattern(joined)
 
     return joined
 
@@ -1108,7 +1139,9 @@ def generate_verification_items(items: List[Dict[str, str]]) -> List[Dict[str, s
         # Apply Name transformation based on whether Name is standard
         if not name_is_standard:
             # Option B: Minimal transformation for non-standard Name
-            ver_item["Name"] = "Verify " + req_name.strip()
+            # But still apply quote-in pattern normalization
+            minimal_name = "Verify " + req_name.strip()
+            ver_item["Name"] = normalize_quote_in_pattern(minimal_name)
         else:
             # Standard Name: apply existing transformations
             if is_setting:
@@ -1119,7 +1152,8 @@ def generate_verification_items(items: List[Dict[str, str]]) -> List[Dict[str, s
         # Apply Text transformation based on whether Text is standard
         if not text_is_standard:
             # Option B: Minimal transformation for non-standard Text (copy verbatim)
-            ver_item["Text"] = req_text
+            # But still apply quote-in pattern normalization
+            ver_item["Text"] = normalize_quote_in_pattern(req_text)
         else:
             # Standard Text: apply existing transformation
             ver_item["Text"] = transform_text(
