@@ -60,6 +60,13 @@ BASE_KEY_ORDER = [
 # Matches "render", "renders", "rendered", "rendering" as whole words (case-insensitive)
 BRDG_RENDER_PATTERN = re.compile(r"\brender(?:s|ed|ing)?\b", re.IGNORECASE)
 
+# Verification item types
+VERIFICATION_TYPES = {
+    "Verification",
+    "DMGR Verification Requirement",
+    "BRDG Verification Requirement"
+}
+
 # ---------------------------------------------------------------------------
 # Item Detection Helpers
 # ---------------------------------------------------------------------------
@@ -1007,7 +1014,11 @@ def has_brdg_render_issue(ver_name: str, ver_text: str) -> bool:
 def generate_verification_items(items: List[Dict[str, str]]) -> List[Dict[str, str]]:
     """
     For each Requirement item that matches the scope rules, generate a
-    corresponding Verification item and update the Requirement's Verified_By.
+    corresponding Verification item.
+
+    Note: This function does NOT modify the Requirement items themselves.
+    The Verified_By field is added to Requirements via apply_verified_by_patch()
+    which operates on the original text to preserve formatting and comments.
 
     Scope rules:
     - ID must start with 'REQU' (Type is no longer used for detection)
@@ -1057,10 +1068,9 @@ def generate_verification_items(items: List[Dict[str, str]]) -> List[Dict[str, s
 
         ver_id = generate_verification_id(req_id)
 
-        # --- Update the Requirement itself (set Verified_By) ---
-        updated_req = dict(item)  # shallow copy to preserve other fields
-        updated_req["Verified_By"] = ver_id
-        result.append(updated_req)
+        # Pass through the original Requirement unchanged.
+        # The Verified_By field will be added by apply_verified_by_patch().
+        result.append(item)
 
         # --- Create the Verification item ---
         ver_item: Dict[str, str] = {}
@@ -1234,11 +1244,7 @@ def write_items(path: str, items: List[Dict[str, str]]) -> None:
             prev_was_comment = False
 
             item_type = item.get("Type", "")
-            is_verification = item_type in {
-                "Verification",
-                "DMGR Verification Requirement",
-                "BRDG Verification Requirement"
-            }
+            is_verification = item_type in VERIFICATION_TYPES
 
             # Top-level item marker
             f.write(f"- Type: {item_type}\n")
@@ -1515,16 +1521,19 @@ def main() -> None:
     items_with_verifications = generate_verification_items(sequenced_items)
 
     # 6) Build a map of Requirement ID -> Verified_By (Verification ID)
-    #    Using the sequenced (updated) IDs
+    #    Extract this from the Verification items, not from Requirements
+    #    Each Verification ID is "V" + the Requirement ID, so we can reverse it
     req_verified_map: Dict[str, str] = {}
     for item in items_with_verifications:
-        req_id = item.get("ID", "").strip()
-        # Use ID-based detection instead of Type
-        if not is_requirement_id(req_id):
-            continue
-        ver_id = item.get("Verified_By", "").strip()
-        if ver_id:
-            req_verified_map[req_id] = ver_id
+        item_type = item.get("Type", "").strip()
+        # Check if this is a Verification item
+        if item_type in VERIFICATION_TYPES:
+            ver_id = item.get("ID", "").strip()
+            # Verification IDs start with "VREQU", corresponding Requirement IDs start with "REQU"
+            if ver_id.startswith("VREQU"):
+                # Remove the "V" prefix to get the Requirement ID
+                req_id = ver_id[1:]  # "VREQU.TEST.1" -> "REQU.TEST.1"
+                req_verified_map[req_id] = ver_id
 
     # Collect IDs of any existing Verification items so we don't duplicate them
     # if the script is run multiple times.
@@ -1532,11 +1541,7 @@ def main() -> None:
     existing_ver_ids = {
         item.get("ID", "").strip()
         for item in items
-        if item.get("Type", "").strip() in {
-            "Verification",
-            "DMGR Verification Requirement",
-            "BRDG Verification Requirement"
-        }
+        if item.get("Type", "").strip() in VERIFICATION_TYPES
     }
 
     # Filter out only the *new* Verification items that were created by
@@ -1554,11 +1559,7 @@ def main() -> None:
         
         item_type = item.get("Type", "").strip()
         # If this is a verification item
-        if item_type in {
-            "Verification",
-            "DMGR Verification Requirement",
-            "BRDG Verification Requirement"
-        }:
+        if item_type in VERIFICATION_TYPES:
             ver_id = item.get("ID", "").strip()
             # If it's a new verification, include any pending comments and the item
             if ver_id and ver_id not in existing_ver_ids:
