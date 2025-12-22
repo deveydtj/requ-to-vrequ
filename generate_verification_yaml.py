@@ -452,7 +452,7 @@ def transform_name_general(req_name: str) -> str:
       - Applies '" in' pattern normalization to ensure proper grammar
       """
     # First, apply quote-in pattern normalization to the input
-    # This ensures "fruit" in white → "fruit" is rendered in white
+    # This ensures '"fruit" in white' → '"fruit" is rendered in white'
     normalized_input = normalize_quote_in_pattern(req_name)
     
     result = ""
@@ -557,6 +557,11 @@ def normalize_quote_in_pattern(text: str) -> str:
     
     This transformation applies to both Verification Name and Text fields to
     ensure consistent grammar across all generated verification items.
+    
+    Note: The pattern matching looks for '" in' (quote-space-in), so text like
+    "result in error" in white is correctly handled - the word "in" inside the
+    quoted string does not trigger the pattern, only the '" in' after the closing
+    quote does, which is the intended behavior.
     
     Args:
         text: The verification name or text to normalize
