@@ -155,7 +155,6 @@ def test_no_duplicate_verified_by_existing_field(temp_yaml_file):
         os.remove(output_path)
 
 
-
 def test_idempotency_multiple_runs(temp_yaml_file):
     """
     Test that running the script multiple times produces identical output (idempotent behavior).

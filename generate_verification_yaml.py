@@ -1061,9 +1061,8 @@ def generate_verification_items(items: List[Dict[str, str]]) -> List[Dict[str, s
 
         ver_id = generate_verification_id(req_id)
 
-        # --- Pass through the original Requirement unchanged ---
-        # The Verified_By field will be added/updated by apply_verified_by_patch()
-        # which operates on the original text to maintain formatting and comments
+        # Pass through the original Requirement unchanged.
+        # The Verified_By field will be added by apply_verified_by_patch().
         result.append(item)
 
         # --- Create the Verification item ---
