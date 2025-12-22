@@ -23,6 +23,7 @@ from generate_verification_yaml import (
     apply_id_sequence_patch,
     apply_verified_by_patch,
     generate_verification_items,
+    VERIFICATION_TYPES,
 )
 
 
@@ -334,11 +335,7 @@ def test_end_to_end_with_formatting_variations():
         req_verified_map = {}
         for item in items_with_ver:
             item_type = item.get('Type', '').strip()
-            if item_type in {
-                'Verification',
-                'DMGR Verification Requirement',
-                'BRDG Verification Requirement'
-            }:
+            if item_type in VERIFICATION_TYPES:
                 ver_id = item.get('ID', '').strip()
                 if ver_id.startswith('VREQU'):
                     # Remove the "V" prefix to get the Requirement ID
