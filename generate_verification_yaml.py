@@ -520,11 +520,11 @@ def normalize_verification_text(text: str) -> str:
     1. Insert 'is rendered' between closing quote and ' in' pattern ('" in')
        to fix grammar for color specifications like: label "fruit" in white
        -> label "fruit" is rendered in white
-    2. Avoids duplication by checking for 'is rendered' before the opening quote
-       (up to 100 chars back or from the previous closing quote). When found,
-       checks if there's a closing quote between it and the current opening quote
-       to determine if it belongs to a different label. This handles both cases
-       with adjectives ("is rendered clearly") and mixed content scenarios.
+    2. Avoids duplication by checking for 'is rendered' in a narrow window
+       (40 characters) before the opening quote, excluding any text before a
+       previous closing quote. Additionally checks for clause separators
+       (and, or, but) that indicate the "is rendered" is in a different clause
+       and unrelated to the current label.
     
     Args:
         text: The verification text to normalize
@@ -570,15 +570,13 @@ def normalize_verification_text(text: str) -> str:
             index = match_pos + len(search_pattern)
             continue
         
-        # Check if "is rendered" already exists in the grammar for this label.
-        # We check in the context BEFORE the opening quote to handle cases like:
-        # "The label is rendered clearly \"fruit\" in white"
-        # where "is rendered" appears before the label with possible adjectives.
+        # Check if "is rendered" already exists specifically for this label.
+        # We need to be careful to only detect "is rendered" that's actually
+        # describing THIS label, not some unrelated earlier clause.
         #
-        # To avoid false positives from previous labels (e.g., in mixed content like
-        # "\"fruit\" is rendered in white and \"vegetable\" in green"), we check:
-        # If there's a closing quote between any found "is rendered" and the current
-        # opening quote, that "is rendered" belongs to a different label.
+        # Strategy: Check if "is rendered" appears close to the opening quote
+        # (within 40 characters) AND there are no clause separators (like "and")
+        # between them that would indicate they're in separate clauses.
         
         # Find the previous closing quote (if any) before the current opening quote
         prev_closing_quote_pos = -1
@@ -587,33 +585,34 @@ def normalize_verification_text(text: str) -> str:
                 prev_closing_quote_pos = i
                 break
         
-        # Search for "is rendered" up to 100 chars back from the opening quote
-        # (but don't go before the start of the text)
-        check_start = max(0, opening_quote_pos - 100)
-        context_before_opening = text[check_start:opening_quote_pos]
+        # Check for "is rendered" in a narrow window (40 chars) before the opening quote
+        narrow_check_start = max(0, opening_quote_pos - 40)
+        # But don't search before the previous closing quote if there is one
+        if prev_closing_quote_pos != -1:
+            narrow_check_start = max(narrow_check_start, prev_closing_quote_pos + 1)
         
-        # Check if "is rendered" appears in the context
-        # Use rfind to get the LAST (nearest) occurrence, not the first one.
-        # This is important for multiple labels in sequence - we want the nearest
-        # "is rendered" to determine if it belongs to the current label or a previous one.
-        is_rendered_pos_in_context = context_before_opening.rfind('is rendered')
+        context_near_opening = text[narrow_check_start:opening_quote_pos]
         
-        if is_rendered_pos_in_context != -1:
-            # Found "is rendered" in the context. Calculate its absolute position.
-            is_rendered_abs_pos = check_start + is_rendered_pos_in_context
+        # Check if "is rendered" appears in this context
+        if 'is rendered' in context_near_opening:
+            # Found "is rendered", but check if there are clause separators between
+            # it and the opening quote. Common separators: " and ", " or ", " but ", etc.
+            is_rendered_pos = context_near_opening.find('is rendered')
+            text_after_is_rendered = context_near_opening[is_rendered_pos + len('is rendered'):]
             
-            # If there's a previous closing quote AND "is rendered" comes after it,
-            # then "is rendered" belongs to that previous label, not this one.
-            # In this case, we SHOULD insert "is rendered" for the current label.
-            if prev_closing_quote_pos != -1 and is_rendered_abs_pos > prev_closing_quote_pos:
-                # "is rendered" is after a closing quote, so it's for a different label
+            # Check for clause separators that indicate a different clause
+            clause_separators = [' and ', ' or ', ' but ', ', and ', ', or ', ', but ']
+            has_separator = any(sep in text_after_is_rendered for sep in clause_separators)
+            
+            if has_separator:
+                # There's a clause separator, so "is rendered" is unrelated - insert
                 result_parts.append(text[index:match_pos])
                 result_parts.append(replace_pattern)
             else:
-                # "is rendered" is before any closing quote, so it's for THIS label
+                # No separator, "is rendered" is for this label - skip insertion
                 result_parts.append(text[index:match_pos + len(search_pattern)])
         else:
-            # No "is rendered" found, insert it
+            # No "is rendered" found in the relevant context, insert it
             result_parts.append(text[index:match_pos])
             result_parts.append(replace_pattern)
         
