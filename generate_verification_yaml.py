@@ -1449,7 +1449,8 @@ def apply_verified_by_patch(original_text: str, req_verified_map: Dict[str, str]
 
                 # Track positions of other keys for insertion ordering
                 # We only look at simple "Key: value" patterns at this level.
-                # Skip this if we're inside a block scalar to avoid matching colons in content.
+                # Lines that belong to a block scalar are handled and skipped above,
+                # so only non-block-scalar lines reach this key-matching logic.
                 m_key = re.match(r"^(\s*)([A-Za-z0-9_]+)\s*:", line)
                 if m_key:
                     key_name = m_key.group(2)
