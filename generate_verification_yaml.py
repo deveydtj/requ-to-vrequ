@@ -659,7 +659,7 @@ def normalize_quote_in_pattern(text: str) -> str:
             # Also check it's not at the very start (command-form)
             elif re.search(r'\brenders?\b', context_before, re.IGNORECASE):
                 # Found render/renders, check if it's passive voice or command-form
-                match = re.search(r'(\S+\s+)\brenders?\b', context_before, re.IGNORECASE)
+                match = re.search(r'(\S+)\s+\brenders?\b', context_before, re.IGNORECASE)
                 if match:
                     preceding = match.group(1).strip().lower()
                     # If preceded by passive auxiliaries, don't skip (allow insertion)
