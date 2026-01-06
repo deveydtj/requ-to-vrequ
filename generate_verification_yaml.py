@@ -627,7 +627,7 @@ def normalize_quote_in_pattern(text: str) -> str:
         # ("renders", "render") that appear in an active sentence structure.
         # Cases where we ALLOW insertion (don't skip):
         # - Command-form "Render" at the start (gets converted to passive voice)
-        # - Passive "is/are rendered" (not an active verb governing this label)
+        # - Passive "is/are/was/were rendered" (not an active verb governing this label)
         # - Past participle "rendered" is implicitly allowed (we don't match it as an
         #   active verb here, e.g. in "is rendered")
         if not skip_insertion:
