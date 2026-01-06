@@ -637,26 +637,30 @@ def normalize_quote_in_pattern(text: str) -> str:
             # Check for active render verb patterns in sentence-style text:
             # - "shall render" (modal + verb - always active)
             # - "renders" or "render" in active voice (checking they are not
-            #   immediately preceded by common passive auxiliaries, and not at
-            #   the very start as command-form)
+            #   immediately preceded by common passive auxiliaries, and treating
+            #   leading, capitalized occurrences in the local context as command-form)
             # - "rendering" (gerund form - typically active)
             # 
             # We explicitly DON'T match:
             # - "rendered" by itself (typically passive: "is rendered", "was rendered")
             # - Forms immediately preceded by passive auxiliaries
-            # - Command-form "Render" at the very start (position 0) - this gets converted
-            #   to passive voice in transform_name_general and needs "is rendered" insertion
+            # - Command-form "Render" that appears at the very start of the overall text;
+            #   this is approximated by checking for a capitalized "Render" at the start
+            #   of the extracted context window and allowing "is rendered" insertion there.
             #
             # Note: We check for passive voice by looking for common auxiliary patterns
-            # preceding the verb. For "render/renders", we also check if it's at the start
-            # of the context (command form) which should allow insertion.
+            # preceding the verb. For "render/renders", we also use the start of the
+            # context window plus capitalization as a heuristic for command-form, in
+            # which case we allow insertion instead of skipping.
             
             # Pattern 1: "shall render" anywhere in context (always active voice)
             if re.search(r'\bshall\s+render\b', context_before, re.IGNORECASE):
                 skip_insertion = True
             # Pattern 2: Present tense "renders" or "render" 
             # Check it's not preceded by "is ", "are ", "was ", "were "
-            # Also check it's not at the very start (command-form)
+            # Also handle the case where it appears at the very start of the context
+            # window: treat capitalized "Render" there as command-form, otherwise as
+            # active voice.
             elif re.search(r'\brenders?\b', context_before, re.IGNORECASE):
                 # Found render/renders, check if it's passive voice or command-form
                 match = re.search(r'(\S+)\s+\brenders?\b', context_before, re.IGNORECASE)
