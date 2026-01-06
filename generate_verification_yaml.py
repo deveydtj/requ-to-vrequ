@@ -707,7 +707,7 @@ def normalize_quote_in_pattern(text: str) -> str:
                         # this is active voice (e.g., "Display renders"), skip insertion.
                         skip_insertion = True
             # Pattern 3: Gerund "rendering" (typically active voice)
-            elif re.search(r'\brendering\b', context_before, re.IGNORECASE):
+            if re.search(r'\brendering\b', context_before, re.IGNORECASE):
                 skip_insertion = True
         
         # Apply the decision
