@@ -173,13 +173,14 @@ def test_end_to_end_sentence_style_with_shall_render():
 
 
 def test_end_to_end_multiple_labels_mixed_verbs():
-    """Test with multiple labels where render verb is present.
+    """Test with multiple labels where a render verb may affect nearby labels.
     
-    Note: The current implementation takes a conservative approach - if ANY active
-    render verb is found in the preceding context (up to 100 chars), it skips
-    insertion for all subsequent labels. This prevents false positives and the
-    double-render bug, even if it means some labels might not get 'is rendered'
-    when they technically could.
+    Note: The current implementation checks the preceding context independently
+    for each quoted label. For each label, it looks back up to 100 characters and,
+    if any active render verb is found in that window, it skips inserting
+    'is rendered' for that specific label. This per-label, 100-character lookback
+    prevents false positives and the double-render bug, even if it means some
+    labels might not get 'is rendered' when they technically could.
     """
     req_text = 'The system renders "button" in white and displays label "status" in green.'
     result = transform_text(req_text, is_advanced=False, is_setting=False)
@@ -188,10 +189,26 @@ def test_end_to_end_multiple_labels_mixed_verbs():
     assert '"button" in white' in result, \
         f"Should not insert 'is rendered' for button (governed by renders), got: {result}"
     
-    # "status" comes after "renders" in the context, so conservative behavior
-    # also skips insertion here to avoid complexity in determining precise scope
+    # "status": the 100-char lookback includes "renders", so insertion is skipped.
+    # This happens because "renders" appears within 100 characters before "status",
+    # not because of a global effect on "all subsequent labels".
     assert '"status" in green' in result, \
-        f"Conservative behavior: skips insertion when render verb is in context, got: {result}"
+        f"Per-label 100-char lookback: skips insertion when render verb in window, got: {result}"
+
+
+def test_non_render_verb_with_quote_in():
+    """Test that non-render verbs (like 'displays') don't block insertion.
+    
+    This test verifies that only render verbs (render/renders/rendering/shall render)
+    suppress insertion. Other action verbs like 'displays' should not affect the
+    insertion of 'is rendered'.
+    """
+    req_text = 'The system displays label "status" in green.'
+    result = transform_text(req_text, is_advanced=False, is_setting=False)
+    
+    # "displays" is not a render verb, so "is rendered" should be inserted
+    assert '"status" is rendered in green' in result, \
+        f"Should insert 'is rendered' when non-render verb governs label, got: {result}"
 
 
 def test_idempotency_with_render_verb():

@@ -628,8 +628,9 @@ def normalize_quote_in_pattern(text: str) -> str:
         # Cases where we ALLOW insertion (don't skip):
         # - Command-form "Render" at the start (gets converted to passive voice)
         # - Passive "is/are/was/were rendered" (not an active verb governing this label)
-        # - Past participle "rendered" is implicitly allowed (we don't match it as an
-        #   active verb here, e.g. in "is rendered")
+        # - We do not attempt to match plain "rendered" as an active verb; typical
+        #   passive uses like "is rendered" or "was rendered" are treated as passive
+        #   and therefore do not block insertion
         if not skip_insertion:
             # Extract context before the opening quote
             context_start = max(0, opening_quote_pos - 100)
@@ -642,57 +643,53 @@ def normalize_quote_in_pattern(text: str) -> str:
             #   leading, capitalized occurrences in the local context as command-form)
             # - "rendering" (gerund form - typically active)
             # 
-            # We explicitly DON'T match:
+            # We explicitly DON'T match these as "active render" patterns that should
+            # suppress insertion:
             # - "rendered" by itself (typically passive: "is rendered", "was rendered")
             # - Forms immediately preceded by passive auxiliaries
-            # - Command-form "Render" that appears at the very start of the overall text;
-            #   this is detected only when the context window itself starts at position 0
-            #   of the full text (context_start == 0) and the verb appears at index 0
-            #   within that window (verb_index == 0), in which case capitalization is
-            #   used to distinguish command-form "Render" from lowercase "render/renders".
+            # - Capitalized, command-form "Render" that appears at the very start of the
+            #   overall text; this is treated as an imperative heading and therefore
+            #   does not cause skipping (insertion is still allowed).
+            #   Command-form detection: only when the context window itself starts at
+            #   position 0 of the full text (context_start == 0) and the verb appears
+            #   at index 0 within that window (verb_index == 0), in which case
+            #   capitalization is used to distinguish command-form "Render" from
+            #   lowercase "render/renders".
             #
-            # Note: We check for passive voice by looking for common auxiliary patterns
-            # preceding the verb. For "render/renders", we use the combination of the
-            # context window start offset and capitalization as a heuristic for
-            # command-form; only when the window starts at the true start of the text
-            # and the verb is at position 0 do we treat capitalized "Render" as
-            # command-form and still allow insertion. If the context window is truncated
-            # (context_start > 0), we conservatively assume there may be a preceding
-            # passive auxiliary and allow insertion instead of skipping.
+            # Note: We check for passive voice by explicitly matching patterns like
+            # "is/are/was/were renders" in the context. If the context window is
+            # truncated (context_start > 0), we conservatively assume there may be
+            # a preceding passive auxiliary and allow insertion instead of skipping.
             
             # Pattern 1: "shall render" anywhere in context (always active voice)
             if re.search(r'\bshall\s+render\b', context_before, re.IGNORECASE):
                 skip_insertion = True
             # Pattern 2: Present tense "renders" or "render" 
-            # Check it's not preceded by "is ", "are ", "was ", "were "
-            # Also handle the case where it appears at the very start of the context
-            # window: treat capitalized "Render" there as command-form, otherwise as
-            # active voice.
+            # Explicitly check for passive voice patterns first, then handle active/command-form
             elif re.search(r'\brenders?\b', context_before, re.IGNORECASE):
-                # Found render/renders, check if it's passive voice or command-form
-                match = re.search(r'(\S+)\s+\brenders?\b', context_before, re.IGNORECASE)
-                if match:
-                    preceding = match.group(1).strip().lower()
-                    # If preceded by passive auxiliaries, don't skip (allow insertion)
-                    if preceding in ['is', 'are', 'was', 'were']:
-                        pass  # Don't skip, allow insertion
-                    else:
-                        # Active voice usage (including "render render"/"render renders"),
-                        # skip insertion
-                        skip_insertion = True
+                # Found render/renders; explicitly treat "is/are/was/were renders"
+                # as passive voice and everything else as active/command-form.
+                passive_match = re.search(
+                    r'\b(is|are|was|were)\s+renders?\b',
+                    context_before,
+                    re.IGNORECASE,
+                )
+                if passive_match:
+                    # Passive voice ("is/are/was/were renders"): allow insertion
+                    pass
                 else:
-                    # No preceding word within the context window. This can mean either:
-                    # - the verb is truly at the start of the text, or
-                    # - the context window was truncated and we lost a preceding word
-                    #   (e.g., a passive auxiliary like "is"/"are").
-                    start_match = re.search(r'\brenders?\b', context_before)
+                    # No inline passive auxiliary detected. We now distinguish between:
+                    # - true start-of-text uses (possible command-form "Render ...")
+                    # - active voice usage (e.g., "Display renders ...")
+                    # - cases where preceding context is truncated (be conservative)
+                    start_match = re.search(r'\brenders?\b', context_before, re.IGNORECASE)
                     if start_match:
                         verb_index = start_match.start()
                         # Only treat this as "start of sentence" / command-form when
                         # the context window begins at the very start of the text.
                         is_context_at_text_start = (context_start == 0)
                         is_at_true_start = is_context_at_text_start and verb_index == 0
-                        if is_at_true_start and context_before[verb_index].isupper():
+                        if is_at_true_start and context_before[verb_index] == 'R':
                             # Command-form "Render" at the true start; don't skip so
                             # downstream logic can insert passive form as needed.
                             pass
@@ -700,11 +697,15 @@ def normalize_quote_in_pattern(text: str) -> str:
                             # Lowercase "render/renders" at the true start: active voice,
                             # skip insertion.
                             skip_insertion = True
-                        else:
+                        elif not is_context_at_text_start:
                             # Context window does not start at position 0; we cannot know
                             # what preceded the verb (it may be part of a passive form),
                             # so be conservative and allow insertion.
                             pass
+                        else:
+                            # Not at start (verb_index > 0) but context starts at 0:
+                            # this is active voice (e.g., "Display renders"), skip insertion.
+                            skip_insertion = True
             # Pattern 3: Gerund "rendering" (typically active voice)
             elif re.search(r'\brendering\b', context_before, re.IGNORECASE):
                 skip_insertion = True
