@@ -689,9 +689,18 @@ def transform_text(req_text: str, is_advanced: bool, is_setting: bool) -> str:
     joined = "\n".join(lines)
 
     # Normalize 'shall render' -> 'render'/'renders' (active voice)
+    # BUT: If the text contains '" in' pattern, that pattern will add 'is rendered' (passive voice),
+    # so we should remove 'shall render' entirely to avoid having both active and passive forms.
     # Check the post-rewrite text (joined) for consistency
     if "shall render" in joined:
-        joined = joined.replace("shall render", render_present)
+        if '" in' in joined:
+            # Remove 'shall render' entirely because normalize_quote_in_pattern will add 'is rendered'
+            joined = joined.replace("shall render", "")
+            # Clean up any double spaces that result from the removal
+            joined = joined.replace("  ", " ")
+        else:
+            # No '" in' pattern, use active voice as normal
+            joined = joined.replace("shall render", render_present)
 
     # Advanced Bridge / DMGR + setting semantics
     if is_advanced and is_setting:
