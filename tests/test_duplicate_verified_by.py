@@ -279,3 +279,240 @@ def test_multiple_requirements_no_duplicates(temp_yaml_file):
     # Cleanup
     if os.path.exists(output_path):
         os.remove(output_path)
+
+
+def test_existing_duplicate_verified_by_fields(temp_yaml_file):
+    """
+    Test that if a Requirement already has multiple duplicate Verified_By fields,
+    the script consolidates them into a single field.
+    """
+    input_content = """- Type: Requirement
+  ID: REQU.TEST.7
+  Name: Test Requirement
+  Text: |
+    The system shall do something.
+  Verified_By: OLD.VALUE1
+  Verified_By: OLD.VALUE2
+  Verified_By: OLD.VALUE3
+"""
+    
+    input_path = temp_yaml_file(input_content)
+    output_path = input_path + ".out"
+    
+    # Run the script
+    script_path = get_script_path()
+    result = subprocess.run(
+        ["python", script_path, input_path, output_path],
+        capture_output=True,
+        text=True
+    )
+    
+    assert result.returncode == 0, f"Script failed: {result.stderr}"
+    
+    # Read the output
+    with open(output_path, 'r') as f:
+        output_content = f.read()
+    
+    # Extract requirement blocks
+    requirement_blocks = extract_requirement_blocks(output_content)
+    assert len(requirement_blocks) == 1, f"Expected 1 requirement block, found {len(requirement_blocks)}"
+    
+    requirement_block = requirement_blocks[0]
+    
+    # Count Verified_By occurrences in the requirement block
+    verified_by_count = count_verified_by_in_block(requirement_block)
+    
+    assert verified_by_count == 1, \
+        f"Expected exactly 1 Verified_By field, found {verified_by_count}.\n" \
+        f"Requirement block:\n" + '\n'.join(requirement_block)
+    
+    # Verify the value was updated to the new verification ID
+    verified_by_line = next((line for line in requirement_block if 'Verified_By:' in line), None)
+    assert verified_by_line is not None
+    assert 'VREQU.TEST.7' in verified_by_line, \
+        f"Expected Verified_By to contain 'VREQU.TEST.7', got: {verified_by_line}"
+    
+    # Ensure none of the old values are present
+    for line in requirement_block:
+        if 'Verified_By:' in line:
+            assert 'OLD.VALUE1' not in line, "Old value OLD.VALUE1 should be removed"
+            assert 'OLD.VALUE2' not in line, "Old value OLD.VALUE2 should be removed"
+            assert 'OLD.VALUE3' not in line, "Old value OLD.VALUE3 should be removed"
+    
+    # Cleanup
+    if os.path.exists(output_path):
+        os.remove(output_path)
+
+
+def test_colons_in_text_block_no_false_keys(temp_yaml_file):
+    """
+    Test that colons inside Text block scalars are not treated as key-value pairs.
+    This ensures Verified_By is inserted at the correct position and not affected
+    by colons in the block content.
+    """
+    input_content = """- Type: Requirement
+  ID: REQU.TEST.8
+  Name: Test Requirement
+  Text: |
+    The system shall do something.
+    Format: CSV
+    Config: value
+  Traced_To: TRACE.1
+"""
+    
+    input_path = temp_yaml_file(input_content)
+    output_path = input_path + ".out"
+    
+    # Run the script
+    script_path = get_script_path()
+    result = subprocess.run(
+        ["python", script_path, input_path, output_path],
+        capture_output=True,
+        text=True
+    )
+    
+    assert result.returncode == 0, f"Script failed: {result.stderr}"
+    
+    # Read the output
+    with open(output_path, 'r') as f:
+        output_content = f.read()
+    
+    # Extract requirement blocks
+    requirement_blocks = extract_requirement_blocks(output_content)
+    assert len(requirement_blocks) == 1, f"Expected 1 requirement block, found {len(requirement_blocks)}"
+    
+    requirement_block = requirement_blocks[0]
+    
+    # Count Verified_By occurrences in the requirement block
+    verified_by_count = count_verified_by_in_block(requirement_block)
+    
+    assert verified_by_count == 1, \
+        f"Expected exactly 1 Verified_By field, found {verified_by_count}.\n" \
+        f"Requirement block:\n" + '\n'.join(requirement_block)
+    
+    # Verify the Verified_By comes AFTER Traced_To (not inside the Text block)
+    verified_by_idx = None
+    traced_to_idx = None
+    text_end_idx = None
+    
+    for idx, line in enumerate(requirement_block):
+        if 'Text: |' in line:
+            # Find where text block ends (next line with <= base indentation)
+            base_indent = len(line) - len(line.lstrip())
+            for j in range(idx + 1, len(requirement_block)):
+                next_line = requirement_block[j]
+                if next_line.strip():  # Non-empty line
+                    next_indent = len(next_line) - len(next_line.lstrip())
+                    if next_indent <= base_indent:
+                        text_end_idx = j
+                        break
+        if 'Traced_To:' in line:
+            traced_to_idx = idx
+        if 'Verified_By:' in line:
+            verified_by_idx = idx
+    
+    # Verified_By should come after the Text block ends
+    if text_end_idx is not None:
+        assert verified_by_idx is not None
+        assert verified_by_idx >= text_end_idx, \
+            f"Verified_By at line {verified_by_idx} should come after Text block ends at line {text_end_idx}"
+    
+    # Verified_By should come after Traced_To
+    if traced_to_idx is not None:
+        assert verified_by_idx is not None
+        assert verified_by_idx > traced_to_idx, \
+            f"Verified_By at line {verified_by_idx} should come after Traced_To at line {traced_to_idx}"
+    
+    # Cleanup
+    if os.path.exists(output_path):
+        os.remove(output_path)
+
+
+def test_hyphen_list_in_text_block(temp_yaml_file):
+    """
+    Test that lines starting with '- ' inside Text blocks (like bulleted lists)
+    are not treated as new item starts.
+    
+    This was a critical bug where "    - test" inside a Text block was detected
+    as a new item start, causing the item to be split incorrectly and resulting
+    in duplicate Verified_By fields and corrupted Text block content.
+    """
+    input_content = """- Type: Requirement
+  ID: REQU.TEST.9
+  Name: Test Requirement with List
+  Text: |
+    The system shall do something:
+    - first item
+    - second item
+  Traced_To: TRACE.1
+"""
+    
+    input_path = temp_yaml_file(input_content)
+    output_path = input_path + ".out"
+    
+    # Run the script
+    script_path = get_script_path()
+    result = subprocess.run(
+        ["python", script_path, input_path, output_path],
+        capture_output=True,
+        text=True
+    )
+    
+    assert result.returncode == 0, f"Script failed: {result.stderr}"
+    
+    # Read the output
+    with open(output_path, 'r') as f:
+        output_content = f.read()
+    
+    # The Text block should remain intact with both list items
+    assert "- first item" in output_content, "First list item should remain in Text block"
+    assert "- second item" in output_content, "Second list item should remain in Text block"
+    
+    # Extract requirement blocks
+    requirement_blocks = extract_requirement_blocks(output_content)
+    assert len(requirement_blocks) == 1, f"Expected 1 requirement block, found {len(requirement_blocks)}"
+    
+    requirement_block = requirement_blocks[0]
+    
+    # Count Verified_By occurrences in the requirement block
+    verified_by_count = count_verified_by_in_block(requirement_block)
+    
+    assert verified_by_count == 1, \
+        f"Expected exactly 1 Verified_By field, found {verified_by_count}.\n" \
+        f"Requirement block:\n" + '\n'.join(requirement_block)
+    
+    # Verify the structure is correct:
+    # Text block should contain both list items, then Traced_To, then Verified_By
+    text_line_idx = None
+    first_item_idx = None
+    second_item_idx = None
+    traced_to_idx = None
+    verified_by_idx = None
+    
+    for idx, line in enumerate(requirement_block):
+        if 'Text: |' in line:
+            text_line_idx = idx
+        if '- first item' in line:
+            first_item_idx = idx
+        if '- second item' in line:
+            second_item_idx = idx
+        if 'Traced_To:' in line:
+            traced_to_idx = idx
+        if 'Verified_By:' in line:
+            verified_by_idx = idx
+    
+    # Verify order: Text, first_item, second_item, Traced_To, Verified_By
+    assert text_line_idx is not None, "Text block not found"
+    assert first_item_idx is not None, "First list item not found"
+    assert second_item_idx is not None, "Second list item not found"
+    assert traced_to_idx is not None, "Traced_To not found"
+    assert verified_by_idx is not None, "Verified_By not found"
+    
+    assert text_line_idx < first_item_idx, "First item should come after Text: | line"
+    assert first_item_idx < second_item_idx, "Second item should come after first item"
+    assert second_item_idx < traced_to_idx, "Traced_To should come after Text block content"
+    assert traced_to_idx < verified_by_idx, "Verified_By should come after Traced_To"
+    
+    # Cleanup
+    if os.path.exists(output_path):
+        os.remove(output_path)

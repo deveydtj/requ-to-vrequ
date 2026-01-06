@@ -1368,9 +1368,14 @@ def apply_verified_by_patch(original_text: str, req_verified_map: Dict[str, str]
     item_lines: List[str] = []
     current_type: Optional[str] = None
     current_req_id: Optional[str] = None
+    
+    # Track block scalar state in outer loop to avoid treating lines inside
+    # Text blocks as new item starts (e.g., "    - test")
+    in_block_scalar = False
+    block_base_indent = 0
 
     def flush_item():
-        nonlocal item_lines, current_type, current_req_id, in_item
+        nonlocal item_lines, current_type, current_req_id, in_item, in_block_scalar, block_base_indent
         if not in_item:
             return
         # Only patch items whose ID starts with REQU and are in the mapping
@@ -1388,6 +1393,11 @@ def apply_verified_by_patch(original_text: str, req_verified_map: Dict[str, str]
             # Some heuristics for where to insert if missing
             last_key_index = -1
             name_key_index = -1
+            
+            # Track when we're inside a block scalar to avoid matching colons in content
+            # Use different names from outer scope to avoid shadowing
+            inner_in_block_scalar = False
+            inner_block_base_indent = 0
 
             # First pass: we just scan and patch/remember positions
             for idx, line in enumerate(item_lines):
@@ -1398,16 +1408,49 @@ def apply_verified_by_patch(original_text: str, req_verified_map: Dict[str, str]
                     patched.append(line)
                     continue
 
+                # Detect block scalar start (e.g., "  Text: |" or "  Text: |-")
+                # Check this BEFORE Verified_By to avoid false matches inside Text blocks
+                if not inner_in_block_scalar:
+                    m_block = re.match(r"^(\s*)([A-Za-z0-9_]+)\s*:\s*\|", line)
+                    if m_block:
+                        inner_in_block_scalar = True
+                        inner_block_base_indent = len(m_block.group(1))
+                        # This is also a key line, so track it
+                        key_name = m_block.group(2)
+                        last_key_index = len(patched)
+                        if key_name == "Name":
+                            name_key_index = len(patched)
+                        patched.append(line)
+                        continue
+                
+                # Check if we're exiting a block scalar
+                # Block content must be indented more than the key line (base + 2 or more)
+                if inner_in_block_scalar:
+                    line_indent = len(line) - len(line.lstrip(" "))
+                    # If we see a line with indent <= base indent and it has content, we've exited the block
+                    if stripped and line_indent <= inner_block_base_indent:
+                        inner_in_block_scalar = False
+                    else:
+                        # Still inside block, don't treat as a key
+                        patched.append(line)
+                        continue
+
                 # Existing Verified_By: line -> replace value
+                # This is now checked AFTER block scalar detection to avoid false matches
                 m_ver = re.match(r"^(\s*)Verified_By\s*:", line)
                 if m_ver:
-                    indent = m_ver.group(1)
-                    patched.append(f"{indent}Verified_By: {ver_id}")
-                    has_verified_by = True
+                    if not has_verified_by:
+                        # Replace the first Verified_By line
+                        indent = m_ver.group(1)
+                        patched.append(f"{indent}Verified_By: {ver_id}")
+                        has_verified_by = True
+                    # Skip any additional Verified_By lines (don't append duplicates)
                     continue
 
                 # Track positions of other keys for insertion ordering
                 # We only look at simple "Key: value" patterns at this level.
+                # Lines that belong to a block scalar are handled and skipped above,
+                # so only non-block-scalar lines reach this key-matching logic.
                 m_key = re.match(r"^(\s*)([A-Za-z0-9_]+)\s*:", line)
                 if m_key:
                     key_name = m_key.group(2)
@@ -1449,15 +1492,39 @@ def apply_verified_by_patch(original_text: str, req_verified_map: Dict[str, str]
         item_lines = []
         current_type = None
         current_req_id = None
+        in_block_scalar = False
+        block_base_indent = 0
 
     for line in lines:
+        # Track block scalar state to avoid treating lines like "    - test" inside
+        # Text blocks as new item starts
+        stripped = line.lstrip()
+        
+        # Check if we're entering a block scalar
+        if in_item and not in_block_scalar:
+            m_block = re.match(r"^(\s*)([A-Za-z0-9_]+)\s*:\s*\|", line)
+            if m_block:
+                in_block_scalar = True
+                block_base_indent = len(m_block.group(1))
+        
+        # Check if we're exiting a block scalar
+        elif in_item and in_block_scalar:
+            line_indent = len(line) - len(line.lstrip(" "))
+            # Exit block if we see a line at or less than base indent with content
+            if stripped and line_indent <= block_base_indent:
+                in_block_scalar = False
+        
         # Detect top-level item start using is_item_start() for consistency
-        if is_item_start(line):
+        # BUT: Don't treat it as a new item if we're inside a block scalar
+        if not in_block_scalar and is_item_start(line):
             # Flush previous block if any
             if in_item:
                 flush_item()
             in_item = True
             item_lines = [line]
+            # Reset block scalar state for new item
+            in_block_scalar = False
+            block_base_indent = 0
             # Try to parse Type or ID if they appear on the first line
             # Format can be "- Type: FOO" or "-  ID: BAR" etc.
             current_type = None
