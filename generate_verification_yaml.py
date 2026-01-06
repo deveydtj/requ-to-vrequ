@@ -696,8 +696,10 @@ def transform_text(req_text: str, is_advanced: bool, is_setting: bool) -> str:
         if '" in' in joined:
             # Remove 'shall render' entirely because normalize_quote_in_pattern will add 'is rendered'
             joined = joined.replace("shall render", "")
-            # Clean up any double spaces that result from the removal
-            joined = joined.replace("  ", " ")
+            # Clean up any multiple consecutive spaces that result from the removal
+            # Use a loop to handle cases with more than 2 consecutive spaces
+            while "  " in joined:
+                joined = joined.replace("  ", " ")
         else:
             # No '" in' pattern, use active voice as normal
             joined = joined.replace("shall render", render_present)
