@@ -1368,9 +1368,14 @@ def apply_verified_by_patch(original_text: str, req_verified_map: Dict[str, str]
     item_lines: List[str] = []
     current_type: Optional[str] = None
     current_req_id: Optional[str] = None
+    
+    # Track block scalar state in outer loop to avoid treating lines inside
+    # Text blocks as new item starts (e.g., "    - test")
+    in_block_scalar = False
+    block_base_indent = 0
 
     def flush_item():
-        nonlocal item_lines, current_type, current_req_id, in_item
+        nonlocal item_lines, current_type, current_req_id, in_item, in_block_scalar, block_base_indent
         if not in_item:
             return
         # Only patch items whose ID starts with REQU and are in the mapping
@@ -1486,13 +1491,35 @@ def apply_verified_by_patch(original_text: str, req_verified_map: Dict[str, str]
         current_req_id = None
 
     for line in lines:
+        # Track block scalar state to avoid treating lines like "    - test" inside
+        # Text blocks as new item starts
+        stripped = line.lstrip()
+        
+        # Check if we're entering a block scalar
+        if in_item and not in_block_scalar:
+            m_block = re.match(r"^(\s*)([A-Za-z0-9_]+)\s*:\s*\|", line)
+            if m_block:
+                in_block_scalar = True
+                block_base_indent = len(m_block.group(1))
+        
+        # Check if we're exiting a block scalar
+        elif in_block_scalar:
+            line_indent = len(line) - len(line.lstrip(" "))
+            # Exit block if we see a line at or less than base indent with content
+            if stripped and line_indent <= block_base_indent:
+                in_block_scalar = False
+        
         # Detect top-level item start using is_item_start() for consistency
-        if is_item_start(line):
+        # BUT: Don't treat it as a new item if we're inside a block scalar
+        if not in_block_scalar and is_item_start(line):
             # Flush previous block if any
             if in_item:
                 flush_item()
             in_item = True
             item_lines = [line]
+            # Reset block scalar state for new item
+            in_block_scalar = False
+            block_base_indent = 0
             # Try to parse Type or ID if they appear on the first line
             # Format can be "- Type: FOO" or "-  ID: BAR" etc.
             current_type = None
