@@ -646,13 +646,19 @@ def normalize_quote_in_pattern(text: str) -> str:
             # - "rendered" by itself (typically passive: "is rendered", "was rendered")
             # - Forms immediately preceded by passive auxiliaries
             # - Command-form "Render" that appears at the very start of the overall text;
-            #   this is approximated by checking for a capitalized "Render" at the start
-            #   of the extracted context window and allowing "is rendered" insertion there.
+            #   this is detected only when the context window itself starts at position 0
+            #   of the full text (context_start == 0) and the verb appears at index 0
+            #   within that window (verb_index == 0), in which case capitalization is
+            #   used to distinguish command-form "Render" from lowercase "render/renders".
             #
             # Note: We check for passive voice by looking for common auxiliary patterns
-            # preceding the verb. For "render/renders", we also use the start of the
-            # context window plus capitalization as a heuristic for command-form, in
-            # which case we allow insertion instead of skipping.
+            # preceding the verb. For "render/renders", we use the combination of the
+            # context window start offset and capitalization as a heuristic for
+            # command-form; only when the window starts at the true start of the text
+            # and the verb is at position 0 do we treat capitalized "Render" as
+            # command-form and still allow insertion. If the context window is truncated
+            # (context_start > 0), we conservatively assume there may be a preceding
+            # passive auxiliary and allow insertion instead of skipping.
             
             # Pattern 1: "shall render" anywhere in context (always active voice)
             if re.search(r'\bshall\s+render\b', context_before, re.IGNORECASE):
