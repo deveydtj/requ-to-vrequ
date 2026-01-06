@@ -343,6 +343,10 @@ def is_plural_subject_phrase(phrase: str) -> bool:
       based on simple morphology.
 
     Important: tokens inside quotes must NOT influence plurality detection.
+    
+    Trailing modifier phrases (introduced by 'with', 'without', 'using', 'including', 
+    'excluding') are stripped before determining plurality, so the grammatical subject
+    is analyzed rather than nouns in modifier phrases.
     """
     if not phrase:
         return False
@@ -355,7 +359,32 @@ def is_plural_subject_phrase(phrase: str) -> bool:
         text = re.sub(r"'[^'\\]*(?:\\.[^'\\]*)*'", " ", text)
         return text
 
+    def _strip_trailing_modifiers(text: str) -> str:
+        """
+        Strip trailing modifier phrases to isolate the core subject.
+        
+        Modifier introducers: with, without, using, including, excluding
+        
+        These modifiers typically introduce prepositional phrases that describe
+        the subject but don't determine its grammatical number. For example:
+        - "indicator with configured values" → core subject is "indicator"
+        - "panel without decorations" → core subject is "panel"
+        
+        This ensures we analyze the true grammatical subject rather than nouns
+        that appear in trailing modifier phrases.
+        """
+        # Pattern matches word boundaries to avoid matching these words as parts of other words
+        # We match the first occurrence of any of these introducers and strip everything after
+        modifier_pattern = r'\b(with|without|using|including|excluding)\b'
+        match = re.search(modifier_pattern, text, re.IGNORECASE)
+        if match:
+            # Return everything before the modifier introducer
+            return text[:match.start()].rstrip()
+        return text
+
     p = _strip_quoted(phrase.strip())
+    # Strip trailing modifiers to isolate core subject
+    p = _strip_trailing_modifiers(p)
     p_low = p.lower()
 
     # Lists and coordination are strong signals of plurality
