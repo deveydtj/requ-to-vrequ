@@ -1401,9 +1401,12 @@ def apply_verified_by_patch(original_text: str, req_verified_map: Dict[str, str]
                 # Existing Verified_By: line -> replace value
                 m_ver = re.match(r"^(\s*)Verified_By\s*:", line)
                 if m_ver:
-                    indent = m_ver.group(1)
-                    patched.append(f"{indent}Verified_By: {ver_id}")
-                    has_verified_by = True
+                    if not has_verified_by:
+                        # Replace the first Verified_By line
+                        indent = m_ver.group(1)
+                        patched.append(f"{indent}Verified_By: {ver_id}")
+                        has_verified_by = True
+                    # Skip any additional Verified_By lines (don't append duplicates)
                     continue
 
                 # Track positions of other keys for insertion ordering

@@ -279,3 +279,66 @@ def test_multiple_requirements_no_duplicates(temp_yaml_file):
     # Cleanup
     if os.path.exists(output_path):
         os.remove(output_path)
+
+
+def test_existing_duplicate_verified_by_fields(temp_yaml_file):
+    """
+    Test that if a Requirement already has multiple duplicate Verified_By fields,
+    the script consolidates them into a single field.
+    """
+    input_content = """- Type: Requirement
+  ID: REQU.TEST.7
+  Name: Test Requirement
+  Text: |
+    The system shall do something.
+  Verified_By: OLD.VALUE1
+  Verified_By: OLD.VALUE2
+  Verified_By: OLD.VALUE3
+"""
+    
+    input_path = temp_yaml_file(input_content)
+    output_path = input_path + ".out"
+    
+    # Run the script
+    script_path = get_script_path()
+    result = subprocess.run(
+        ["python", script_path, input_path, output_path],
+        capture_output=True,
+        text=True
+    )
+    
+    assert result.returncode == 0, f"Script failed: {result.stderr}"
+    
+    # Read the output
+    with open(output_path, 'r') as f:
+        output_content = f.read()
+    
+    # Extract requirement blocks
+    requirement_blocks = extract_requirement_blocks(output_content)
+    assert len(requirement_blocks) == 1, f"Expected 1 requirement block, found {len(requirement_blocks)}"
+    
+    requirement_block = requirement_blocks[0]
+    
+    # Count Verified_By occurrences in the requirement block
+    verified_by_count = count_verified_by_in_block(requirement_block)
+    
+    assert verified_by_count == 1, \
+        f"Expected exactly 1 Verified_By field, found {verified_by_count}.\n" \
+        f"Requirement block:\n" + '\n'.join(requirement_block)
+    
+    # Verify the value was updated to the new verification ID
+    verified_by_line = next((line for line in requirement_block if 'Verified_By:' in line), None)
+    assert verified_by_line is not None
+    assert 'VREQU.TEST.7' in verified_by_line, \
+        f"Expected Verified_By to contain 'VREQU.TEST.7', got: {verified_by_line}"
+    
+    # Ensure none of the old values are present
+    for line in requirement_block:
+        if 'Verified_By:' in line:
+            assert 'OLD.VALUE1' not in line, "Old value OLD.VALUE1 should be removed"
+            assert 'OLD.VALUE2' not in line, "Old value OLD.VALUE2 should be removed"
+            assert 'OLD.VALUE3' not in line, "Old value OLD.VALUE3 should be removed"
+    
+    # Cleanup
+    if os.path.exists(output_path):
+        os.remove(output_path)
