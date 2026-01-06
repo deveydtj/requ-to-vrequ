@@ -260,7 +260,7 @@ def parse_items(path: str) -> List[Dict[str, str]]:
 
             # Single-line value: preserve the entire value including any '#' characters
             # Note: Comments are only recognized on full lines starting with '#'
-            # (see lines 181 and 286), not as inline comments after values.
+            # (see lines 181 and 274), not as inline comments after values.
             current[key] = after
             current["_order"].append(("key", key))
 
