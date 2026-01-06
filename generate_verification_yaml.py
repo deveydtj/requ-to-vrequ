@@ -666,7 +666,8 @@ def normalize_quote_in_pattern(text: str) -> str:
                 skip_insertion = True
             # Pattern 2: Present tense "renders" or "render" 
             # Explicitly check for passive voice patterns first, then handle active/command-form
-            elif re.search(r'\brenders?\b', context_before, re.IGNORECASE):
+            render_match = re.search(r'\brenders?\b', context_before, re.IGNORECASE)
+            if render_match:
                 # Found render/renders; explicitly treat "is/are/was/were renders"
                 # as passive voice and everything else as active/command-form.
                 passive_match = re.search(
@@ -682,30 +683,29 @@ def normalize_quote_in_pattern(text: str) -> str:
                     # - true start-of-text uses (possible command-form "Render ...")
                     # - active voice usage (e.g., "Display renders ...")
                     # - cases where preceding context is truncated (be conservative)
-                    start_match = re.search(r'\brenders?\b', context_before, re.IGNORECASE)
-                    if start_match:
-                        verb_index = start_match.start()
-                        # Only treat this as "start of sentence" / command-form when
-                        # the context window begins at the very start of the text.
-                        is_context_at_text_start = (context_start == 0)
-                        is_at_true_start = is_context_at_text_start and verb_index == 0
-                        if is_at_true_start and context_before[verb_index] == 'R':
-                            # Command-form "Render" at the true start; don't skip so
-                            # downstream logic can insert passive form as needed.
-                            pass
-                        elif is_at_true_start:
-                            # Lowercase "render/renders" at the true start: active voice,
-                            # skip insertion.
-                            skip_insertion = True
-                        elif not is_context_at_text_start:
-                            # Context window does not start at position 0; we cannot know
-                            # what preceded the verb (it may be part of a passive form),
-                            # so be conservative and allow insertion.
-                            pass
-                        else:
-                            # Not at start (verb_index > 0) but context starts at 0:
-                            # this is active voice (e.g., "Display renders"), skip insertion.
-                            skip_insertion = True
+                    # Reuse the match object from above instead of searching again
+                    verb_index = render_match.start()
+                    # Only treat this as "start of sentence" / command-form when
+                    # the context window begins at the very start of the text.
+                    is_context_at_text_start = (context_start == 0)
+                    is_at_true_start = is_context_at_text_start and verb_index == 0
+                    if is_at_true_start and context_before[verb_index] == 'R':
+                        # Command-form "Render" at the true start; don't skip so
+                        # downstream logic can insert passive form as needed.
+                        pass
+                    elif is_at_true_start:
+                        # Lowercase "render/renders" at the true start: active voice,
+                        # skip insertion.
+                        skip_insertion = True
+                    elif not is_context_at_text_start:
+                        # Context window does not start at position 0; we cannot know
+                        # what preceded the verb (it may be part of a passive form),
+                        # so be conservative and allow insertion.
+                        pass
+                    else:
+                        # Not at start (verb_index > 0) but context starts at 0:
+                        # this is active voice (e.g., "Display renders"), skip insertion.
+                        skip_insertion = True
             # Pattern 3: Gerund "rendering" (typically active voice)
             elif re.search(r'\brendering\b', context_before, re.IGNORECASE):
                 skip_insertion = True
