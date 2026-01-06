@@ -1395,8 +1395,9 @@ def apply_verified_by_patch(original_text: str, req_verified_map: Dict[str, str]
             name_key_index = -1
             
             # Track when we're inside a block scalar to avoid matching colons in content
-            in_block_scalar = False
-            block_base_indent = 0
+            # Use different names from outer scope to avoid shadowing
+            inner_in_block_scalar = False
+            inner_block_base_indent = 0
 
             # First pass: we just scan and patch/remember positions
             for idx, line in enumerate(item_lines):
@@ -1407,24 +1408,13 @@ def apply_verified_by_patch(original_text: str, req_verified_map: Dict[str, str]
                     patched.append(line)
                     continue
 
-                # Existing Verified_By: line -> replace value
-                m_ver = re.match(r"^(\s*)Verified_By\s*:", line)
-                if m_ver:
-                    if not has_verified_by:
-                        # Replace the first Verified_By line
-                        indent = m_ver.group(1)
-                        patched.append(f"{indent}Verified_By: {ver_id}")
-                        has_verified_by = True
-                    # Skip any additional Verified_By lines (don't append duplicates)
-                    continue
-
                 # Detect block scalar start (e.g., "  Text: |" or "  Text: |-")
-                # This must be checked before the general key pattern to track state correctly
-                if not in_block_scalar:
+                # Check this BEFORE Verified_By to avoid false matches inside Text blocks
+                if not inner_in_block_scalar:
                     m_block = re.match(r"^(\s*)([A-Za-z0-9_]+)\s*:\s*\|", line)
                     if m_block:
-                        in_block_scalar = True
-                        block_base_indent = len(m_block.group(1))
+                        inner_in_block_scalar = True
+                        inner_block_base_indent = len(m_block.group(1))
                         # This is also a key line, so track it
                         key_name = m_block.group(2)
                         last_key_index = len(patched)
@@ -1435,15 +1425,27 @@ def apply_verified_by_patch(original_text: str, req_verified_map: Dict[str, str]
                 
                 # Check if we're exiting a block scalar
                 # Block content must be indented more than the key line (base + 2 or more)
-                if in_block_scalar:
+                if inner_in_block_scalar:
                     line_indent = len(line) - len(line.lstrip(" "))
                     # If we see a line with indent <= base indent and it has content, we've exited the block
-                    if stripped and line_indent <= block_base_indent:
-                        in_block_scalar = False
+                    if stripped and line_indent <= inner_block_base_indent:
+                        inner_in_block_scalar = False
                     else:
                         # Still inside block, don't treat as a key
                         patched.append(line)
                         continue
+
+                # Existing Verified_By: line -> replace value
+                # This is now checked AFTER block scalar detection to avoid false matches
+                m_ver = re.match(r"^(\s*)Verified_By\s*:", line)
+                if m_ver:
+                    if not has_verified_by:
+                        # Replace the first Verified_By line
+                        indent = m_ver.group(1)
+                        patched.append(f"{indent}Verified_By: {ver_id}")
+                        has_verified_by = True
+                    # Skip any additional Verified_By lines (don't append duplicates)
+                    continue
 
                 # Track positions of other keys for insertion ordering
                 # We only look at simple "Key: value" patterns at this level.
@@ -1489,6 +1491,8 @@ def apply_verified_by_patch(original_text: str, req_verified_map: Dict[str, str]
         item_lines = []
         current_type = None
         current_req_id = None
+        in_block_scalar = False
+        block_base_indent = 0
 
     for line in lines:
         # Track block scalar state to avoid treating lines like "    - test" inside
