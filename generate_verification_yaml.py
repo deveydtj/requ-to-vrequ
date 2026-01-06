@@ -672,10 +672,13 @@ def normalize_quote_in_pattern(text: str) -> str:
                         # Active voice usage, skip insertion
                         skip_insertion = True
                 else:
-                    # No preceding word, or at start - check if it's command-form "Render"
-                    if context_before.strip().lower().startswith('render'):
-                        pass  # Command form at start, don't skip
+                    # No preceding word: "render/renders" is at the start of the context.
+                    # Treat as command-form only if the verb is capitalized ("Render").
+                    start_match = re.search(r'\brenders?\b', context_before)
+                    if start_match and context_before[start_match.start()].isupper():
+                        pass  # Command form "Render" at start, don't skip
                     else:
+                        # Lowercase "render/renders" at start: active voice, skip insertion
                         skip_insertion = True
             # Pattern 3: Gerund "rendering" (typically active voice)
             elif re.search(r'\brendering\b', context_before, re.IGNORECASE):
