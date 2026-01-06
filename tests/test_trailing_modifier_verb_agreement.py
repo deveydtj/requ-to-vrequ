@@ -231,17 +231,38 @@ def test_multiple_modifiers():
     assert verb == "is", f"Expected 'is' for '{phrase}', got '{verb}'"
 
 
-def test_modifier_not_at_end():
-    """Test that modifiers in the middle are not stripped."""
-    # If 'with' is not at the boundary of a trailing phrase, we should still
-    # analyze normally. This is a more complex case.
+def test_coordination_in_modifier_ignored():
+    """Test that coordination within modifier phrases is correctly ignored.
+    
+    The implementation strips modifiers BEFORE checking for coordination.
+    This ensures that only the core subject determines plurality, not
+    coordination that appears within the modifier phrase itself.
+    """
+    # Singular subject with coordination in the modifier phrase
+    phrase = "the indicator with buttons and switches"
+    result = is_plural_subject_phrase(phrase)
+    verb = choose_be_verb(phrase)
+    
+    # Should be singular because "indicator" is singular, even though
+    # the modifier phrase contains "and" coordination
+    assert result == False, f"Expected singular (coordination in modifier ignored), got plural"
+    assert verb == "is", f"Expected 'is' for '{phrase}', got '{verb}'"
+
+
+def test_plural_subject_morphology():
+    """Test that plural subjects are detected by morphology (e.g., 's' ending).
+    
+    This test uses "controls" which is morphologically plural (ends with 's').
+    Even though the modifier phrase contains coordination, the test passes
+    due to the plural morphology of "controls", not due to coordination.
+    """
     phrase = "the controls with indicators and displays"
     result = is_plural_subject_phrase(phrase)
     verb = choose_be_verb(phrase)
     
-    # Has "and" coordination after "with", so should be plural
-    assert result == True, f"Expected plural for coordination, got singular"
-    assert verb == "are", f"Expected 'are' for coordination, got '{verb}'"
+    # Should be plural because "controls" ends with 's' (morphologically plural)
+    assert result == True, f"Expected plural (morphological), got singular"
+    assert verb == "are", f"Expected 'are' for '{phrase}', got '{verb}'"
 
 
 if __name__ == '__main__':
