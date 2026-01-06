@@ -551,9 +551,11 @@ def normalize_quote_in_pattern(text: str) -> str:
        to fix grammar for color specifications like: label "fruit" in white
        -> label "fruit" is rendered in white
     2. Avoids duplication by checking if ' is rendered' already appears
-       immediately before the '" in' pattern. This precise local check handles
-       all cases correctly regardless of text length, number of labels, or
-       placement of unrelated "is rendered" phrases.
+       immediately before the '" in' pattern.
+    3. Avoids duplication by checking if an explicit render verb already governs
+       the label phrase. This prevents double-render insertion in sentence-style
+       requirements like "shall render ... label \"button\" in white" which should
+       become "renders ... label \"button\" in white" (not "renders ... \"button\" is rendered in white").
     
     This transformation applies to both Verification Name and Text fields to
     ensure consistent grammar across all generated verification items.
@@ -618,6 +620,39 @@ def normalize_quote_in_pattern(text: str) -> str:
         # Get the text between the closing quote and the ' in'
         text_after_closing_quote = text[match_pos + 1:match_pos + 1 + 12]  # +1 to skip the quote itself
         skip_insertion = text_after_closing_quote.startswith(' is rendered')
+        
+        # NEW: Check if there's already an active render verb governing this label phrase.
+        # We specifically look for "shall render" or conjugated present-tense forms
+        # ("renders", "render") that appear in an active sentence structure.
+        # We DON'T skip for:
+        # - Command-form "Render" at the start (gets converted to passive voice)
+        # - Passive "is/are rendered" (not an active verb governing this label)
+        # - Past participle "rendered" in passive constructions like "is rendered"
+        if not skip_insertion:
+            # Extract context before the opening quote
+            context_start = max(0, opening_quote_pos - 100)
+            context_before = text[context_start:opening_quote_pos]
+            
+            # Check for active render verb patterns in sentence-style text:
+            # - "shall render" (modal + verb - always active)
+            # - "renders" or "render" that are NOT at the very beginning and NOT
+            #   preceded by "is" or "are" (to exclude passive voice)
+            # - "rendering" (gerund form - active)
+            # 
+            # We DON'T match:
+            # - "rendered" by itself (could be passive "is rendered")
+            # - Any form if preceded by "is/are/was/were" (passive voice markers)
+            
+            # Pattern 1: "shall render" anywhere in context (always active voice)
+            if re.search(r'\bshall\s+render\b', context_before, re.IGNORECASE):
+                skip_insertion = True
+            # Pattern 2: Present tense "renders" or "render" with at least 1 char before
+            # and NOT immediately preceded by "is" or "are"
+            elif re.search(r'.+(?<!is\s)(?<!are\s)\brenders?\b', context_before, re.IGNORECASE):
+                skip_insertion = True
+            # Pattern 3: Gerund "rendering" (active voice)
+            elif re.search(r'\brendering\b', context_before, re.IGNORECASE):
+                skip_insertion = True
         
         # Apply the decision
         if skip_insertion:
