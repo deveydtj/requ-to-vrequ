@@ -665,11 +665,9 @@ def normalize_quote_in_pattern(text: str) -> str:
                     # If preceded by passive auxiliaries, don't skip (allow insertion)
                     if preceding in ['is', 'are', 'was', 'were']:
                         pass  # Don't skip, allow insertion
-                    # If preceded by "Render" at start, don't skip (command form)
-                    elif preceding.lower() == 'render' and context_before.strip().lower().startswith('render'):
-                        pass  # Don't skip, allow insertion for command form
                     else:
-                        # Active voice usage, skip insertion
+                        # Active voice usage (including "render render"/"render renders"),
+                        # skip insertion
                         skip_insertion = True
                 else:
                     # No preceding word: "render/renders" is at the start of the context.
