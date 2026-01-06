@@ -1388,6 +1388,10 @@ def apply_verified_by_patch(original_text: str, req_verified_map: Dict[str, str]
             # Some heuristics for where to insert if missing
             last_key_index = -1
             name_key_index = -1
+            
+            # Track when we're inside a block scalar to avoid matching colons in content
+            in_block_scalar = False
+            block_base_indent = 0
 
             # First pass: we just scan and patch/remember positions
             for idx, line in enumerate(item_lines):
@@ -1409,8 +1413,36 @@ def apply_verified_by_patch(original_text: str, req_verified_map: Dict[str, str]
                     # Skip any additional Verified_By lines (don't append duplicates)
                     continue
 
+                # Detect block scalar start (e.g., "  Text: |" or "  Text: |-")
+                # This must be checked before the general key pattern to track state correctly
+                if not in_block_scalar:
+                    m_block = re.match(r"^(\s*)([A-Za-z0-9_]+)\s*:\s*\|", line)
+                    if m_block:
+                        in_block_scalar = True
+                        block_base_indent = len(m_block.group(1))
+                        # This is also a key line, so track it
+                        key_name = m_block.group(2)
+                        last_key_index = len(patched)
+                        if key_name == "Name":
+                            name_key_index = len(patched)
+                        patched.append(line)
+                        continue
+                
+                # Check if we're exiting a block scalar
+                # Block content must be indented more than the key line (base + 2 or more)
+                if in_block_scalar:
+                    line_indent = len(line) - len(line.lstrip(" "))
+                    # If we see a line with indent <= base indent and it has content, we've exited the block
+                    if stripped and line_indent <= block_base_indent:
+                        in_block_scalar = False
+                    else:
+                        # Still inside block, don't treat as a key
+                        patched.append(line)
+                        continue
+
                 # Track positions of other keys for insertion ordering
                 # We only look at simple "Key: value" patterns at this level.
+                # Skip this if we're inside a block scalar to avoid matching colons in content.
                 m_key = re.match(r"^(\s*)([A-Za-z0-9_]+)\s*:", line)
                 if m_key:
                     key_name = m_key.group(2)
