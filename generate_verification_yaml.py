@@ -646,9 +646,9 @@ def normalize_quote_in_pattern(text: str) -> str:
             # Pattern 1: "shall render" anywhere in context (always active voice)
             if re.search(r'\bshall\s+render\b', context_before, re.IGNORECASE):
                 skip_insertion = True
-            # Pattern 2: Present tense "renders" or "render" with at least 1 char before
-            # and NOT immediately preceded by "is" or "are"
-            elif re.search(r'.+(?<!is\s)(?<!are\s)\brenders?\b', context_before, re.IGNORECASE):
+            # Pattern 2: Present tense "renders" or "render" not immediately preceded
+            # by "is" or "are" (to avoid passive voice)
+            elif re.search(r'.*(?<!is\s)(?<!are\s)\brenders?\b', context_before, re.IGNORECASE):
                 skip_insertion = True
             # Pattern 3: Gerund "rendering" (active voice)
             elif re.search(r'\brendering\b', context_before, re.IGNORECASE):
