@@ -258,23 +258,11 @@ def parse_items(path: str) -> List[Dict[str, str]]:
 
                 continue
 
-            # Single-line value; split inline comments from the value
-            # Detect an inline comment '#' anywhere in the raw line after the colon
-            hash_idx_in_raw = raw_line.find("#")
-            if hash_idx_in_raw != -1:
-                # Compute where the value starts within the raw line
-                colon_idx_in_raw = raw_line.find(":")
-                # Value portion is the substring after the colon up to the hash
-                value_part = raw_line[colon_idx_in_raw +
-                    1:hash_idx_in_raw].strip()
-                # preserve original indentation/content
-                comment_part = raw_line[hash_idx_in_raw:]
-                current[key] = value_part
-                current["_order"].append(("key", key))
-                current["_order"].append(("comment", comment_part))
-            else:
-                current[key] = after
-                current["_order"].append(("key", key))
+            # Single-line value: preserve the entire value including any '#' characters
+            # Note: Comments are only recognized on full lines starting with '#'
+            # (see lines 181 and 286), not as inline comments after values.
+            current[key] = after
+            current["_order"].append(("key", key))
 
             if key == "Text":
                 current["_Text_block"] = False
