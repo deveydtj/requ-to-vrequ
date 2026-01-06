@@ -1508,7 +1508,7 @@ def apply_verified_by_patch(original_text: str, req_verified_map: Dict[str, str]
                 block_base_indent = len(m_block.group(1))
         
         # Check if we're exiting a block scalar
-        elif in_block_scalar:
+        elif in_item and in_block_scalar:
             line_indent = len(line) - len(line.lstrip(" "))
             # Exit block if we see a line at or less than base indent with content
             if stripped and line_indent <= block_base_indent:
