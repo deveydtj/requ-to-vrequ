@@ -625,7 +625,7 @@ def normalize_quote_in_pattern(text: str) -> str:
         # NEW: Check if there's already an active render verb governing this label phrase.
         # We specifically look for "shall render" or conjugated present-tense forms
         # ("renders", "render") that appear in an active sentence structure.
-        # We DON'T skip for:
+        # Cases where we ALLOW insertion (don't skip):
         # - Command-form "Render" at the start (gets converted to passive voice)
         # - Passive "is/are rendered" (not an active verb governing this label)
         # - Past participle "rendered" in passive constructions like "is rendered"
