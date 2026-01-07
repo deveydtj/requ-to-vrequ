@@ -22,7 +22,7 @@ import tempfile
 # Add parent directory to path to import the module
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from generate_verification_yaml import apply_verified_by_patch, parse_items
+from generate_verification_yaml import apply_verified_by_patch
 
 
 def test_single_line_name_with_hash_verified_by_insertion(temp_yaml_file):
@@ -334,6 +334,8 @@ def _create_temp_file_standalone(content):
         try:
             os.remove(tmp_path)
         except (FileNotFoundError, OSError):
+            # Best-effort cleanup: ignore errors if the file was already removed
+            # or cannot be deleted; this should not interfere with test execution.
             pass
     
     atexit.register(_cleanup_temp_file)

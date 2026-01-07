@@ -135,13 +135,7 @@ def test_e2e_hash_preservation_in_verified_by_patch(temp_yaml_file):
         assert "Text: |" in output_content, \
             "Block scalar indicator should be present"
         
-        # Count '#' characters to ensure none were lost
-        input_hash_count = input_content.count('#')
-        output_hash_count = output_content.count('#')
-        
-        # Output should have at least as many '#' as input (may have more from FIX comments)
-        # But the key point is that none should be lost
-        # Let's be more specific: check that specific patterns are preserved
+        # Verify specific patterns are preserved (more reliable than counting all '#')
         input_patterns = [
             "#123",
             "# Issue format:",
@@ -295,6 +289,7 @@ def _create_temp_file_standalone(content):
         try:
             os.remove(tmp_path)
         except (FileNotFoundError, OSError):
+            # Best-effort cleanup: ignore missing file or OS errors during test teardown.
             pass
     
     atexit.register(_cleanup_temp_file)
