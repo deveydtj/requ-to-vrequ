@@ -22,6 +22,17 @@ This script is designed to satisfy the authoring rules described in the
 - Capturing and re-emitting all comments in the original order, adjacent to
   the related item blocks.
 
+COMMENT HANDLING:
+Comments are only recognized at the beginning of a line (after stripping leading
+whitespace). A line starting with '#' is treated as a full-line comment.
+- Inline comments (e.g., "Name: value # comment") are NOT supported.
+- Hash characters within field values are preserved as-is and not treated as
+  comment delimiters.
+- Examples of preserved hash content:
+  * "Name: Render issue #123 indicator" - #123 is preserved
+  * "Text: Display version ###.###.###" - pattern is preserved
+  * Block scalar lines starting with # are preserved as content
+
 SUPPORTED TOP-LEVEL ITEM FORMAT:
 Top-level items must start with "- " (hyphen followed by space), optionally
 preceded by leading whitespace. The script supports:

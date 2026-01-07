@@ -124,3 +124,36 @@ Created comprehensive test suites:
 4. **Patcher:** Mirrors parser logic with proper block scalar state tracking
 
 The comprehensive test suite validates this behavior and guards against future regressions.
+
+## Additional Validation (End-to-End Integration Tests)
+
+### Test Coverage Added: `test_hash_preservation_e2e.py`
+
+Validates hash preservation through complete workflow including transformations:
+
+#### Standard Path Tests (✅ All Passing)
+- ✅ Standard Name with inline hash (#123) - preserves through "Render X" → "Verify the X is rendered" transformation
+- ✅ Standard Text with hash pattern (###.###.###) - preserves through "shall render" → "renders" transformation
+- ✅ Multiple hashes in standard transformations - all preserved
+
+#### Non-Standard Path Tests (✅ All Passing)
+- ✅ Non-standard Name with hash - preserves with "# FIX - Non-Standard Name" comment
+- ✅ Non-standard Text with hash - preserves with "# FIX - Non-Standard Text" comment
+- ✅ Multiple hashes in non-standard paths - all preserved with FIX comments
+
+#### Domain-Specific Tests (✅ All Passing)
+- ✅ BRDG domain with hash - preserves in both standard (Set/shall set) and non-standard paths
+- ✅ DMGR domain with hash - preserves in both standard (Render/shall render) and non-standard paths
+
+#### Edge Cases (✅ All Passing)
+- ✅ Hash in block scalar content - lines starting with # preserved as content (not comments)
+- ✅ Multiple hash patterns in same field - all preserved
+- ✅ Hash in color codes (#FF0000, #00FF00) - preserved
+
+### Documentation Updated
+
+Script header updated with explicit clarification:
+- Inline comments are NOT supported
+- Comments are full-line only (must start with # after stripping leading whitespace)
+- Hash characters within field values are always preserved
+- Examples provided for Name/Text fields and block scalars
