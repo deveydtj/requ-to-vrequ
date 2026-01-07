@@ -1467,6 +1467,12 @@ def apply_verified_by_patch(original_text: str, req_verified_map: Dict[str, str]
     This avoids re-writing the whole file via write_items(), which can move
     comments, while still guaranteeing that each Requirement has an up-to-date
     Verified_By value.
+    
+    Hash character handling (validated by tests/test_verified_by_patch_with_hash.py):
+    - '#' characters in Name/Text values are preserved exactly (never treated as comments)
+    - Only lines where lstrip().startswith("#") are treated as comments
+    - Block scalar content with leading '#' is preserved as content, not comments
+    - Block scalar state machine tracks indentation to avoid treating '#' in content as comments
     """
     if not req_verified_map:
         return original_text
