@@ -179,3 +179,46 @@ Output:
   Traced_To: TRACE.2
 ```
 
+### test_hash_preservation_e2e.py
+
+**NEW** - End-to-end integration tests for hash character preservation in Name and Text fields:
+
+#### Standard Path Tests:
+- **test_standard_name_with_hash_inline**: Name starting with "Render " containing #123
+  - Validates transformation: "Render issue #123 indicator" → "Verify the issue #123 indicator is rendered"
+- **test_standard_text_with_hash_pattern**: Text containing "shall render" with ###.###.###
+  - Validates transformation: "shall render version ###.###.###" → "renders version ###.###.###"
+
+#### Non-Standard Path Tests:
+- **test_nonstandard_name_with_hash**: Name not starting with "Render " or "Set " containing #456
+  - Validates "# FIX - Non-Standard Name" comment is present
+  - Validates minimal transformation: "Display issue #456 indicator" → "Verify Display issue #456 indicator"
+- **test_nonstandard_text_with_hash**: Text for DMGR domain without "shall render" containing ###.###
+  - Validates "# FIX - Non-Standard Text" comment is present
+  - Validates text preserved verbatim
+
+#### Combined Tests:
+- **test_combined_standard_with_multiple_hashes**: Multiple hash formats in standard transformations
+  - Issue references: #1, #2, #3
+  - Color codes: #FF0000, #00FF00
+  - All preserved through transformations
+- **test_combined_nonstandard_with_multiple_hashes**: Multiple hashes with FIX comments
+  - Validates all hashes preserved even with non-standard warnings
+
+#### Domain-Specific Tests:
+- **test_brdg_domain_with_hash**: BRDG setting semantics with # characters
+  - Standard: "Set timeout to #DEFAULT" → "Verify the timeout is set to #DEFAULT"
+  - Non-standard: preserves # with FIX comment
+
+#### Edge Cases:
+- **test_hash_in_block_scalar_content**: Lines starting with # in block scalars
+  - Validates "# Format: owner/repo#number" treated as content, not comment
+  - Validates preservation through transformation
+
+**Acceptance Criteria Validated:**
+1. ✅ End-to-end run shows no truncation at # anywhere
+2. ✅ Standard paths preserve # through transformations
+3. ✅ Non-standard paths preserve # with FIX comments
+4. ✅ Block scalar lines starting with # treated as content
+5. ✅ Existing comment preservation unchanged
+
