@@ -4,7 +4,7 @@ Test script for non-standard formatting flags and Option B behavior.
 
 This script validates that the generate_verification_yaml.py script correctly:
 1. Detects non-standard Name fields (not starting with "Render " or "Set ")
-2. Detects non-standard Text fields based on domain (DMGR expects "shall render", BRDG expects "shall set")
+2. Detects non-standard Text fields based on domain (DMGR expects "shall render" or "shall set", BRDG expects "shall set")
 3. Inserts "# FIX - Non-Standard Name" or "# FIX - Non-Standard Text" comments
 4. Applies minimal transformation for non-standard fields
 5. Applies standard transformation for standard fields
@@ -51,8 +51,9 @@ def test_is_standard_text():
     """Test the is_standard_text function."""
     print("\nTesting is_standard_text...")
     
-    # DMGR domain
+    # DMGR domain - should accept both "shall render" and "shall set"
     assert is_standard_text("The system shall render the UI.", "DMGR"), "Should be standard for DMGR"
+    assert is_standard_text("The system shall set the timeout.", "DMGR"), "DMGR should accept 'shall set' as standard"
     assert not is_standard_text("The system shall display the UI.", "DMGR"), "Should be non-standard for DMGR"
     assert not is_standard_text("", "DMGR"), "Empty text should be non-standard"
     

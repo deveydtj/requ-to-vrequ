@@ -1118,7 +1118,7 @@ def is_standard_text(req_text: str, domain: str) -> bool:
     Check if a Requirement Text follows domain-specific standard formatting.
     
     Domain-specific standards:
-    - DMGR: Text should contain "shall render"
+    - DMGR: Text should contain "shall render" or "shall set"
     - BRDG: Text should contain "shall set"
     - OTHER: No specific Text standard required, but text must be non-empty
     
@@ -1135,7 +1135,7 @@ def is_standard_text(req_text: str, domain: str) -> bool:
         return False
     
     if domain == "DMGR":
-        return "shall render" in req_text
+        return "shall render" in req_text or "shall set" in req_text
     elif domain == "BRDG":
         return "shall set" in req_text
     else:
