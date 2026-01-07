@@ -163,11 +163,13 @@ def test_end_to_end_dmgr_shall_set():
         try:
             os.remove(input_file)
         except OSError:
+            # Ignore cleanup errors (e.g., file already removed or missing).
             pass
         if output_file is not None:
             try:
                 os.remove(output_file)
             except OSError:
+                # Ignore cleanup errors for optional output file as they are non-fatal.
                 pass
 
 
