@@ -754,7 +754,7 @@ def normalize_quote_in_pattern(text: str) -> str:
     return ''.join(result_parts)
 
 
-def transform_text(req_text: str, is_advanced: bool, is_setting: bool) -> str:
+def transform_text(req_text: str, is_advanced: bool, is_setting: bool, is_dmgr: bool = False) -> str:
     """
     Transform Requirement Text into Verification Text.
 
@@ -768,8 +768,9 @@ def transform_text(req_text: str, is_advanced: bool, is_setting: bool) -> str:
 
     Verb normalization (applied to the post-rewrite text for consistency):
     - Replace 'shall render' with 'render/renders' depending on subject plurality.
-    - For advanced (.BRDG./.DMGR.) setting semantics, and when applicable,
-      replace 'shall set' with 'set/sets' depending on subject plurality.
+    - For DMGR domain, replace 'shall set' with 'set/sets' depending on subject plurality.
+    - For BRDG domain with setting semantics (Name contains 'Set'), replace 'shall set'
+      with 'set/sets' depending on subject plurality.
     
     All replacement checks and operations are performed on the rewritten text (after
     first-line normalization) to ensure consistency and avoid edge cases where
@@ -814,8 +815,16 @@ def transform_text(req_text: str, is_advanced: bool, is_setting: bool) -> str:
     if "shall render" in joined:
         joined = joined.replace("shall render", render_present)
 
-    # Advanced Bridge / DMGR + setting semantics
-    if is_advanced and is_setting:
+    # DMGR domain: always transform "shall set" (like "shall render")
+    # BRDG domain: only transform "shall set" when is_setting=True (Name contains "Set")
+    if is_dmgr:
+        # Handle 'shall set to' first to avoid 'to to' duplication
+        if "shall set to" in joined:
+            joined = joined.replace("shall set to", f"{set_present} to")
+        elif "shall set" in joined:
+            joined = joined.replace("shall set", set_present)
+    elif is_advanced and is_setting:
+        # BRDG with setting semantics
         # Handle 'shall set to' first to avoid 'to to' duplication
         # Check the post-rewrite text (joined) for consistency
         if "shall set to" in joined:
@@ -1281,6 +1290,7 @@ def generate_verification_items(items: List[Dict[str, str]]) -> List[Dict[str, s
                 req_text,
                 is_advanced=is_advanced,
                 is_setting=is_setting,
+                is_dmgr=is_dmgr,
             )
 
         # Verified_By starts empty for the Verification
