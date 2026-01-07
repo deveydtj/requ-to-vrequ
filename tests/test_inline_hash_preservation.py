@@ -203,10 +203,10 @@ def _create_temp_file_standalone(content):
         # Ensure the file handle is closed so data is flushed to disk.
         tmp_file.close()
     
-    def _cleanup_temp_file(path: str = tmp_path) -> None:
+    def _cleanup_temp_file() -> None:
         """Remove the standalone temporary file on process exit."""
         try:
-            os.remove(path)
+            os.remove(tmp_path)
         except FileNotFoundError:
             # File was already removed; nothing to do.
             pass

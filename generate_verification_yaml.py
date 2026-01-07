@@ -261,7 +261,7 @@ def parse_items(path: str) -> List[Dict[str, str]]:
             # Single-line value: preserve the entire value including any '#' characters
             # Note: Comments are only recognized on full lines starting with '#':
             #   - Line 181: Standalone comments (before any item)
-            #   - Line 274: In-item comments (between keys within an item)
+            #   - Line 276: In-item comments (between keys within an item)
             # Hash characters within values are NOT treated as comment delimiters.
             current[key] = after
             current["_order"].append(("key", key))
