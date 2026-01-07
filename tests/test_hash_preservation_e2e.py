@@ -70,11 +70,6 @@ def test_standard_name_with_hash_inline():
         
         # Verification Name should preserve # through transformation
         # Expected: "Verify the issue #123 indicator is rendered"
-        lines = output_content.split('\n')
-        vrequ_section = '\n'.join([l for l in lines if 'VREQU.DMGR.TEST.1' in l or 
-                                    (lines.index(l) > lines.index([x for x in lines if 'VREQU.DMGR.TEST.1' in x][0]) 
-                                     if [x for x in lines if 'VREQU.DMGR.TEST.1' in x] else False)])[:200]
-        
         assert "#123" in output_content and "VREQU.DMGR.TEST.1" in output_content, \
             "Verification Name should preserve #123"
         
@@ -487,27 +482,6 @@ def test_hash_in_block_scalar_content():
             os.remove(input_file)
         if os.path.exists(output_file):
             os.remove(output_file)
-
-
-def _create_temp_file_standalone(content):
-    """Standalone temp file creator for when pytest is not available."""
-    import atexit
-    
-    tmp_file = tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False)
-    try:
-        tmp_file.write(content)
-        tmp_path = tmp_file.name
-    finally:
-        tmp_file.close()
-    
-    def _cleanup_temp_file() -> None:
-        try:
-            os.remove(tmp_path)
-        except (FileNotFoundError, OSError):
-            pass
-    
-    atexit.register(_cleanup_temp_file)
-    return tmp_path
 
 
 if __name__ == '__main__':
