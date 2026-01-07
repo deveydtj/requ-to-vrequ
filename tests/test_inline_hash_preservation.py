@@ -188,11 +188,34 @@ def test_multiple_hashes_preserved(temp_yaml_file):
 
 
 def _create_temp_file_standalone(content):
-    """Standalone temp file creator for when pytest is not available."""
+    """Standalone temp file creator for when pytest is not available.
+    
+    Creates a temporary file and registers cleanup to run on process exit.
+    """
     import tempfile
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
-        f.write(content)
-        return f.name
+    import atexit
+    
+    tmp_file = tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False)
+    try:
+        tmp_file.write(content)
+        tmp_path = tmp_file.name
+    finally:
+        # Ensure the file handle is closed so data is flushed to disk.
+        tmp_file.close()
+    
+    def _cleanup_temp_file(path: str = tmp_path) -> None:
+        """Remove the standalone temporary file on process exit."""
+        try:
+            os.remove(path)
+        except FileNotFoundError:
+            # File was already removed; nothing to do.
+            pass
+        except OSError:
+            # Ignore other OS errors during cleanup to avoid masking test results.
+            pass
+    
+    atexit.register(_cleanup_temp_file)
+    return tmp_path
 
 
 if __name__ == '__main__':
