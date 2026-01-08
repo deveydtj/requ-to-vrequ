@@ -10,7 +10,7 @@ To add a new modal verb normalization (e.g., "shall display"):
 
 ### 1. Add an entry to MODAL_VERB_RULES
 
-Location: `generate_verification_yaml.py`, after line 80 (in the MODAL_VERB_RULES list)
+Location: `generate_verification_yaml.py`, in the `MODAL_VERB_RULES` list
 
 ```python
 {

@@ -936,8 +936,11 @@ def transform_text(req_text: str, is_advanced: bool, is_setting: bool, is_dmgr: 
 
     Verb normalization (applied to the post-rewrite text for consistency):
     - Uses MODAL_VERB_RULES to apply domain-specific transformations
-    - Rules are processed in priority order (high to low), then by trigger length (long to short)
-    - This ensures "shall set to" is processed before "shall set" to avoid duplication
+    - Rules are sorted by (priority, trigger_length) tuple in descending order
+      This means higher priority values are processed first, and within the same
+      priority level, longer trigger phrases are processed first
+    - This ensures "shall set to" (priority 10) is processed before "shall set" (priority 0)
+      to avoid duplication issues
     - DMGR domain: transforms all rules where domain includes "DMGR"
     - BRDG domain: transforms rules where domain includes "BRDG" and requirements are met
       (e.g., requires_setting=True only applies when is_setting=True)
