@@ -348,6 +348,7 @@ def test_end_to_end_dmgr_shall_overlay():
         try:
             os.remove(input_file)
         except OSError:
+            # Best-effort cleanup: ignore errors if the temp input file was already removed
             pass
         if output_file is not None:
             try:
