@@ -181,8 +181,8 @@ def is_block_scalar_header(line: str) -> Tuple[bool, int]:
     if ":" not in stripped:
         return (False, 0)
     
-    # Calculate indentation
-    indent = len(line) - len(stripped)
+    # Calculate indentation (use lstrip(" ") to match parse_items())
+    indent = len(line) - len(line.lstrip(" "))
     
     # Split on first colon
     parts = stripped.split(":", 1)
@@ -992,7 +992,7 @@ def apply_id_sequence_patch(original_text: str, id_map: Dict[str, str]) -> str:
     Block scalar awareness:
     - Lines starting with "- " inside block scalars (e.g., Text: |) are NOT treated
       as new items, preventing item_index drift
-    - Block scalars are detected by headers like "Key: |", "Key: |-", "Key: |+"
+    - Block scalars are detected by headers like "Key: |" or "Key: |-"
     - Exit block scalar when indentation drops to header level or below
     
     Args:
@@ -1024,13 +1024,18 @@ def apply_id_sequence_patch(original_text: str, id_map: Dict[str, str]) -> str:
         # If we're inside a block scalar, check if we should exit
         if in_block_scalar:
             # Block scalar content continues until a non-empty line appears
-            # with indentation <= header indentation.
+            # with indentation <= header indentation AND either:
+            #   - starts with "- " (new item), or
+            #   - contains ":" (new key/value header).
             # Empty lines are preserved as part of the block content.
-            stripped = line.lstrip()
+            # This matches the exit logic used in parse_items() (lines 295-302).
+            stripped = line.lstrip(" ")
             if stripped:  # Non-empty line with content
-                current_indent = len(line) - len(stripped)
-                if current_indent <= block_header_indent:
-                    # We've exited the block scalar (found a line at header level or less)
+                current_indent = len(line) - len(line.lstrip(" "))
+                if current_indent <= block_header_indent and (
+                    stripped.startswith("- ") or ":" in stripped
+                ):
+                    # We've exited the block scalar (found a header-level item or key)
                     in_block_scalar = False
                     # Continue processing this line normally (fall through)
                 else:

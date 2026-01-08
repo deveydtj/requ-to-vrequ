@@ -10,16 +10,11 @@ counted lines starting with "- " inside block scalars as new items, causing
 item_index drift and misalignment with the id_map.
 """
 
-import sys
-import os
-
 from generate_verification_yaml import (
     parse_items,
     build_id_sequence_map,
     apply_id_sequence_patch,
 )
-
-from conftest import get_script_path
 
 
 def test_block_scalar_bullets_do_not_affect_item_indexing(temp_yaml_file):
