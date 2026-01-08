@@ -151,7 +151,7 @@ Rules are processed in order of:
 
 This ensures overlapping patterns are handled correctly:
 - "shall set to" (priority 10) processes before "shall set" (priority 0)
-- Prevents "shall set to" → "sets to" → "setss to" bug
+- Prevents "shall set to" → "sets to" → "sets to to" bug
 
 ## Testing
 

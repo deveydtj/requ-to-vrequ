@@ -281,11 +281,13 @@ def test_end_to_end_rule_table():
         try:
             os.remove(input_file)
         except OSError:
+            # Best-effort cleanup: ignore errors when removing the temporary input file
             pass
         if output_file is not None:
             try:
                 os.remove(output_file)
             except OSError:
+                # Best-effort cleanup: ignore errors when removing the temporary output file
                 pass
 
 
