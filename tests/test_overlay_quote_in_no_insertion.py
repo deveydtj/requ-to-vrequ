@@ -160,10 +160,55 @@ def test_passive_voice_allows_insertion():
             print(f"    Input:    {input_text}")
             print(f"    Output:   {result}")
             print("    Expected: Should insert 'is rendered in' (passive voice allows insertion)")
-            # This is informational - passive "overlaid" may or may not be handled
-            # depending on implementation, so we don't assert failure here
+            assert False, f"Test failed: {name}"
     
-    print("✓ Passive voice tests completed")
+    print("✓ All passive voice tests passed")
+
+
+def test_edge_cases_documented_trade_offs():
+    """Test edge cases documented in implementation comments.
+    
+    These tests validate the documented trade-offs where the implementation
+    intentionally blocks insertion even in ambiguous cases, prioritizing
+    policy compliance over precision.
+    """
+    print("\nTesting documented edge case trade-offs...")
+    
+    test_cases = [
+        # Edge case 1: Overlay verb has different object
+        (
+            "different object",
+            'System overlays the background. The label "fruit" in white is separate',
+            True  # Should block (aggressive policy compliance)
+        ),
+        # Edge case 2: Overlay in subordinate clause
+        (
+            "subordinate clause",
+            'While we overlay graphics, the label "fruit" in white shows status',
+            True  # Should block (aggressive policy compliance)
+        ),
+        # Edge case 3: Truncated context (overlay appears but context_start > 0)
+        (
+            "truncated context",
+            "The system does many things. " * 5 + 'Then it overlays the label "fruit" in white',
+            True  # Should block (aggressive policy compliance)
+        ),
+    ]
+    
+    for name, input_text, should_block in test_cases:
+        result = normalize_quote_in_pattern(input_text)
+        blocks_insertion = '"fruit" is rendered in white' not in result
+        
+        if blocks_insertion == should_block:
+            print(f"  ✓ {name}")
+        else:
+            print(f"  ✗ {name}")
+            print(f"    Input:    {input_text[:80]}...")
+            print(f"    Output:   {result[-80:] if len(result) > 80 else result}")
+            print(f"    Expected: {'Block' if should_block else 'Allow'} insertion")
+            assert False, f"Test failed: {name}"
+    
+    print("✓ All edge case tests passed")
 
 
 def main():
@@ -180,6 +225,7 @@ def main():
         test_render_contexts_still_block_insertion()
         test_already_has_is_rendered()
         test_passive_voice_allows_insertion()
+        test_edge_cases_documented_trade_offs()
         
         print("\n" + "=" * 60)
         print("All tests passed! ✓")
