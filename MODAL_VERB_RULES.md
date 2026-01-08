@@ -67,7 +67,7 @@ That's it! No changes to `is_standard_text()` or `transform_text()` needed.
 
 ### Basic Modal Verb (All Domains)
 
-"shall render" applies to all domains and is considered standard everywhere:
+"shall render" applies to all domains for transformation but only DMGR and OTHER consider it standard:
 
 ```python
 {
@@ -76,7 +76,7 @@ That's it! No changes to `is_standard_text()` or `transform_text()` needed.
     "domains": {"DMGR", "BRDG", "OTHER"},
     "priority": 0,
     "requires_setting": False,
-    "standardness_domains": {"DMGR", "BRDG", "OTHER"},
+    "standardness_domains": {"DMGR", "OTHER"},  # BRDG does not consider this standard
 }
 ```
 

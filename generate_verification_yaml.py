@@ -136,7 +136,7 @@ MODAL_VERB_RULES = [
         "domains": {"DMGR", "BRDG", "OTHER"},  # Applies to all domains
         "priority": 0,
         "requires_setting": False,
-        "standardness_domains": {"DMGR", "BRDG", "OTHER"},  # All domains consider this standard
+        "standardness_domains": {"DMGR", "OTHER"},  # Only DMGR/OTHER consider this standard; BRDG does not
     },
     {
         "trigger": "shall overlay",
@@ -1371,7 +1371,7 @@ def is_standard_text(req_text: str, domain: str) -> bool:
     
     Domain-specific standards (derived from MODAL_VERB_RULES):
     - DMGR: Text should contain "shall render", "shall set", or "shall overlay"
-    - BRDG: Text should contain "shall set" or "shall render"
+    - BRDG: Text should contain "shall set" or "shall set to"
     - OTHER: No specific Text standard required, but text must be non-empty
     
     Empty text is always considered non-standard regardless of domain.

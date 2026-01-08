@@ -184,9 +184,9 @@ def test_standardness_detection():
     assert is_standard_text("The display shall render the UI.", "DMGR"), \
         "DMGR with 'shall render' should be standard"
     
-    # BRDG with "shall render" should be standard
-    assert is_standard_text("The bridge shall render the UI.", "BRDG"), \
-        "BRDG with 'shall render' should be standard"
+    # BRDG with "shall render" should NOT be standard (only 'shall set' is standard for BRDG)
+    assert not is_standard_text("The bridge shall render the UI.", "BRDG"), \
+        "BRDG with 'shall render' should be NON-standard"
     
     # OTHER domain should always be standard (if non-empty)
     assert is_standard_text("The system shall configure the timeout.", "OTHER"), \
