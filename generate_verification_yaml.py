@@ -1390,7 +1390,7 @@ def is_standard_text(req_text: str, domain: str) -> bool:
         # Use standardness_domains if specified, otherwise use domains
         standardness_domains = rule.get("standardness_domains", rule["domains"])
         if domain in standardness_domains and rule["trigger"] in req_text:
-            return True
+            return True  # Early exit on first match for performance
     
     return False
 
