@@ -744,9 +744,7 @@ def normalize_quote_in_pattern(text: str) -> str:
             # a preceding passive auxiliary and allow insertion instead of skipping.
             
             # Pattern 1: "shall render" or "shall overlay" anywhere in context (always active voice)
-            if re.search(r'\bshall\s+render\b', context_before, re.IGNORECASE):
-                skip_insertion = True
-            if re.search(r'\bshall\s+overlay\b', context_before, re.IGNORECASE):
+            if re.search(r'\bshall\s+(render|overlay)\b', context_before, re.IGNORECASE):
                 skip_insertion = True
             # Pattern 2: Present tense "renders", "render", "overlays", or "overlay"
             # Explicitly check for passive voice patterns first, then handle active/command-form
@@ -821,9 +819,7 @@ def normalize_quote_in_pattern(text: str) -> str:
                         # Not at start but context starts at 0: active voice
                         skip_insertion = True
             # Pattern 3: Gerund "rendering" or "overlaying" (typically active voice)
-            if re.search(r'\brendering\b', context_before, re.IGNORECASE):
-                skip_insertion = True
-            if re.search(r'\boverlaying\b', context_before, re.IGNORECASE):
+            if re.search(r'\b(rendering|overlaying)\b', context_before, re.IGNORECASE):
                 skip_insertion = True
         
         # Apply the decision
