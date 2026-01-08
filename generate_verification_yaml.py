@@ -510,13 +510,15 @@ def choose_be_verb(phrase: str) -> str:
 def choose_present_verb(base_verb: str, phrase: str) -> str:
     """
     Return the correct present-tense verb form for the given phrase:
-    - Singular subject => 'renders' / 'sets'
-    - Plural subject   => 'render' / 'set'
-    Works for 'render', 'set', and other regular verbs.
+    - Singular subject => 'renders' / 'sets' / 'overlays'
+    - Plural subject   => 'render' / 'set' / 'overlay'
+    Works for 'render', 'set', 'overlay', and other regular verbs.
     """
     plural = is_plural_subject_phrase(phrase)
     if base_verb == "render":
         return "render" if plural else "renders"
+    elif base_verb == "overlay":
+        return "overlay" if plural else "overlays"
     # Fallback: default singular adds 's'
     return base_verb if plural else (base_verb + "s")
 
@@ -702,13 +704,13 @@ def normalize_quote_in_pattern(text: str) -> str:
         text_after_closing_quote = text[match_pos + 1:match_pos + 1 + 12]  # +1 to skip the quote itself
         skip_insertion = text_after_closing_quote.startswith(' is rendered')
         
-        # NEW: Check if there's already an active render verb governing this label phrase.
-        # We specifically look for "shall render" or conjugated present-tense forms
-        # ("renders", "render") that appear in an active sentence structure.
+        # NEW: Check if there's already an active render/overlay verb governing this label phrase.
+        # We specifically look for "shall render", "shall overlay", or conjugated present-tense forms
+        # ("renders", "render", "overlays", "overlay") that appear in an active sentence structure.
         # Cases where we ALLOW insertion (don't skip):
-        # - Command-form "Render" at the start (gets converted to passive voice)
+        # - Command-form "Render"/"Overlay" at the start (gets converted to passive voice)
         # - Passive "is/are/was/were rendered" (not an active verb governing this label)
-        # - We do not attempt to match plain "rendered" as an active verb; typical
+        # - We do not attempt to match plain "rendered"/"overlaid" as an active verb; typical
         #   passive uses like "is rendered" or "was rendered" are treated as passive
         #   and therefore do not block insertion
         if not skip_insertion:
@@ -716,35 +718,37 @@ def normalize_quote_in_pattern(text: str) -> str:
             context_start = max(0, opening_quote_pos - 100)
             context_before = text[context_start:opening_quote_pos]
             
-            # Check for active render verb patterns in sentence-style text:
-            # - "shall render" (modal + verb - always active)
-            # - "renders" or "render" in active voice (checking they are not
+            # Check for active render/overlay verb patterns in sentence-style text:
+            # - "shall render" or "shall overlay" (modal + verb - always active)
+            # - "renders", "render", "overlays", or "overlay" in active voice (checking they are not
             #   immediately preceded by common passive auxiliaries, and treating
             #   leading, capitalized occurrences in the local context as command-form)
-            # - "rendering" (gerund form - typically active)
+            # - "rendering" or "overlaying" (gerund form - typically active)
             # 
-            # We explicitly DON'T match these as "active render" patterns that should
+            # We explicitly DON'T match these as "active render/overlay" patterns that should
             # suppress insertion:
-            # - "rendered" by itself (typically passive: "is rendered", "was rendered")
+            # - "rendered"/"overlaid" by itself (typically passive: "is rendered", "was overlaid")
             # - Forms immediately preceded by passive auxiliaries
-            # - Capitalized, command-form "Render" that appears at the very start of the
+            # - Capitalized, command-form "Render"/"Overlay" that appears at the very start of the
             #   overall text; this is treated as an imperative heading and therefore
             #   does not cause skipping (insertion is still allowed).
             #   Command-form detection: only when the context window itself starts at
             #   position 0 of the full text (context_start == 0) and the verb appears
             #   at index 0 within that window (verb_index == 0), in which case
-            #   capitalization is used to distinguish command-form "Render" from
-            #   lowercase "render/renders".
+            #   capitalization is used to distinguish command-form "Render"/"Overlay" from
+            #   lowercase "render/renders"/"overlay/overlays".
             #
             # Note: We check for passive voice by explicitly matching patterns like
             # "is/are/was/were renders" in the context. If the context window is
             # truncated (context_start > 0), we conservatively assume there may be
             # a preceding passive auxiliary and allow insertion instead of skipping.
             
-            # Pattern 1: "shall render" anywhere in context (always active voice)
+            # Pattern 1: "shall render" or "shall overlay" anywhere in context (always active voice)
             if re.search(r'\bshall\s+render\b', context_before, re.IGNORECASE):
                 skip_insertion = True
-            # Pattern 2: Present tense "renders" or "render" 
+            if re.search(r'\bshall\s+overlay\b', context_before, re.IGNORECASE):
+                skip_insertion = True
+            # Pattern 2: Present tense "renders", "render", "overlays", or "overlay"
             # Explicitly check for passive voice patterns first, then handle active/command-form
             render_match = re.search(r'\brenders?\b', context_before, re.IGNORECASE)
             if render_match:
@@ -786,8 +790,40 @@ def normalize_quote_in_pattern(text: str) -> str:
                         # Not at start (verb_index > 0) but context starts at 0:
                         # this is active voice (e.g., "Display renders"), skip insertion.
                         skip_insertion = True
-            # Pattern 3: Gerund "rendering" (typically active voice)
+            # Pattern 2b: Present tense "overlays" or "overlay" (same logic as render)
+            overlay_match = re.search(r'\boverlays?\b', context_before, re.IGNORECASE)
+            if overlay_match:
+                # Found overlay/overlays; explicitly treat "is/are/was/were overlays"
+                # as passive voice and everything else as active/command-form.
+                passive_match = re.search(
+                    r'\b(is|are|was|were)\s+overlays?\b',
+                    context_before,
+                    re.IGNORECASE,
+                )
+                if passive_match:
+                    # Passive voice: allow insertion
+                    pass
+                else:
+                    # Same logic as render
+                    verb_index = overlay_match.start()
+                    is_context_at_text_start = (context_start == 0)
+                    is_at_true_start = is_context_at_text_start and verb_index == 0
+                    if is_at_true_start and context_before[verb_index] == 'O':
+                        # Command-form "Overlay" at the true start; don't skip
+                        pass
+                    elif is_at_true_start:
+                        # Lowercase "overlay/overlays" at the true start: active voice
+                        skip_insertion = True
+                    elif not is_context_at_text_start:
+                        # Context window truncated; be conservative
+                        pass
+                    else:
+                        # Not at start but context starts at 0: active voice
+                        skip_insertion = True
+            # Pattern 3: Gerund "rendering" or "overlaying" (typically active voice)
             if re.search(r'\brendering\b', context_before, re.IGNORECASE):
+                skip_insertion = True
+            if re.search(r'\boverlaying\b', context_before, re.IGNORECASE):
                 skip_insertion = True
         
         # Apply the decision
@@ -818,6 +854,7 @@ def transform_text(req_text: str, is_advanced: bool, is_setting: bool, is_dmgr: 
 
     Verb normalization (applied to the post-rewrite text for consistency):
     - Replace 'shall render' with 'render/renders' depending on subject plurality.
+    - Replace 'shall overlay' with 'overlay/overlays' depending on subject plurality.
     - For DMGR domain, replace 'shall set' with 'set/sets' depending on subject plurality.
     - For BRDG domain with setting semantics (Name contains 'Set'), replace 'shall set'
       with 'set/sets' depending on subject plurality.
@@ -837,6 +874,7 @@ def transform_text(req_text: str, is_advanced: bool, is_setting: bool, is_dmgr: 
     subject_phrase = extract_subject_phrase(remainder)
     be = choose_be_verb(subject_phrase)
     render_present = choose_present_verb("render", subject_phrase)
+    overlay_present = choose_present_verb("overlay", subject_phrase)
     set_present = choose_present_verb("set", subject_phrase)
 
     # Build the rewritten first line
@@ -864,6 +902,11 @@ def transform_text(req_text: str, is_advanced: bool, is_setting: bool, is_dmgr: 
     # Check the post-rewrite text (joined) for consistency
     if "shall render" in joined:
         joined = joined.replace("shall render", render_present)
+
+    # Normalize 'shall overlay' -> 'overlay'/'overlays' (active voice)
+    # Check the post-rewrite text (joined) for consistency
+    if "shall overlay" in joined:
+        joined = joined.replace("shall overlay", overlay_present)
 
     # DMGR domain: always transform "shall set" (like "shall render")
     # BRDG domain: only transform "shall set" when is_setting=True (Name contains "Set")
@@ -1221,7 +1264,7 @@ def is_standard_text(req_text: str, domain: str) -> bool:
     Check if a Requirement Text follows domain-specific standard formatting.
     
     Domain-specific standards:
-    - DMGR: Text should contain "shall render" or "shall set"
+    - DMGR: Text should contain "shall render", "shall set", or "shall overlay"
     - BRDG: Text should contain "shall set"
     - OTHER: No specific Text standard required, but text must be non-empty
     
@@ -1238,7 +1281,7 @@ def is_standard_text(req_text: str, domain: str) -> bool:
         return False
     
     if domain == "DMGR":
-        return "shall render" in req_text or "shall set" in req_text
+        return "shall render" in req_text or "shall set" in req_text or "shall overlay" in req_text
     elif domain == "BRDG":
         return "shall set" in req_text
     else:
