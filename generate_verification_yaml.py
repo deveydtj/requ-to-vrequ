@@ -108,6 +108,7 @@ VERIFICATION_TYPES = {
 #       "domains": {"DMGR"},
 #       "priority": 0,
 #       "requires_setting": False,
+#       "standardness_domains": {"DMGR"},  # Optional: defaults to 'domains' if omitted
 #   }
 
 MODAL_VERB_RULES = [
@@ -1390,8 +1391,19 @@ def is_standard_text(req_text: str, domain: str) -> bool:
         return True
     
     # Check if text contains any trigger phrase that contributes to standardness for this domain
-    # Note: We check for trigger presence regardless of requires_setting flag
-    # because is_standard_text only checks Text, not Name (setting semantics)
+    # 
+    # IMPORTANT: This function intentionally ignores the 'requires_setting' flag because:
+    # 1. is_standard_text() only has access to Text, not Name (where "Set" is checked)
+    # 2. This creates a known inconsistency: For BRDG requirements with "shall set" in Text
+    #    but without "Set" in Name:
+    #    - is_standard_text() returns True (considers it standard)
+    #    - transform_text() will NOT transform it (because is_setting=False)
+    #    Result: "shall set" remains untransformed without a FIX comment
+    # 3. This behavior is inherited from the original implementation and maintained for
+    #    backward compatibility
+    # 
+    # To check for this edge case, generate_verification_items() could be enhanced to
+    # cross-check Name and Text together, but that's outside the scope of this refactoring.
     for rule in MODAL_VERB_RULES:
         # Use standardness_domains if specified, otherwise use domains
         standardness_domains = rule.get("standardness_domains", rule["domains"])
