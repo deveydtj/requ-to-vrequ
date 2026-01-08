@@ -151,14 +151,22 @@ def parse_first_line_kv(line: str) -> Optional[Tuple[str, str]]:
 
 def is_block_scalar_header(line: str) -> Tuple[bool, int]:
     """
-    Check if a line is a block scalar header (e.g., "Key: |", "Key: |-", "Key: |+").
+    Check if a line is a YAML literal block scalar header.
+    
+    Supports the same block scalar types as parse_items():
+    - "Key: |" (literal, clip trailing newlines)
+    - "Key: |-" (literal, strip trailing newlines)
+    
+    Does NOT support:
+    - Folded scalars (">", ">-", etc.)
+    - Other YAML block scalar variants
     
     Args:
         line: The line to check
     
     Returns:
         (is_header, indent) tuple where:
-        - is_header: True if this is a block scalar header
+        - is_header: True if this is a literal block scalar header
         - indent: The indentation level of the key (for tracking block end)
     
     Examples:
@@ -183,8 +191,9 @@ def is_block_scalar_header(line: str) -> Tuple[bool, int]:
     
     value = parts[1].lstrip()
     
-    # Check if value is a block scalar indicator: |, |-, |+
-    if value in ("|", "|-", "|+"):
+    # Check if value is a literal block scalar indicator: | or |-
+    # (matching the indicators supported by parse_items())
+    if value in ("|", "|-"):
         return (True, indent)
     
     return (False, 0)
@@ -1014,13 +1023,14 @@ def apply_id_sequence_patch(original_text: str, id_map: Dict[str, str]) -> str:
     for line in lines:
         # If we're inside a block scalar, check if we should exit
         if in_block_scalar:
-            # Exit block scalar when we see a non-empty line with indentation
-            # less than or equal to the block header's indentation
+            # Block scalar content continues until a non-empty line appears
+            # with indentation <= header indentation.
+            # Empty lines are preserved as part of the block content.
             stripped = line.lstrip()
-            if stripped:  # Non-empty line
+            if stripped:  # Non-empty line with content
                 current_indent = len(line) - len(stripped)
                 if current_indent <= block_header_indent:
-                    # We've exited the block scalar
+                    # We've exited the block scalar (found a line at header level or less)
                     in_block_scalar = False
                     # Continue processing this line normally (fall through)
                 else:
