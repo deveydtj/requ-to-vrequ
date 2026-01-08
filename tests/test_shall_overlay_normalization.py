@@ -452,7 +452,7 @@ def test_end_to_end_brdg_shall_overlay_non_standard():
         # Check lines before TEST.1 verification (should have non-standard comment)
         lines_before_test1 = '\n'.join(lines[max(0, test1_ver_idx-3):test1_ver_idx])
         assert "# FIX - Non-Standard Text" in lines_before_test1, \
-            "BRDG with 'shall overlay' should be flagged as non-standard Text"
+            "BRDG with 'shall overlay' should be flagged as non-standard text"
         
         # Verify that "shall overlay" is NOT transformed
         test1_section = '\n'.join(lines[test1_ver_idx:test1_ver_idx+20])
