@@ -994,6 +994,12 @@ def transform_text(req_text: str, is_advanced: bool, is_setting: bool, is_dmgr: 
         reverse=True
     )
     
+    # Apply all applicable rules in order
+    # Note: We intentionally process ALL rules (not just first match) because:
+    # 1. Text may contain multiple different modal verbs (e.g., "shall render" and "shall overlay")
+    # 2. Priority ordering prevents incorrect overlap (e.g., "shall set to" at priority 10
+    #    processes before "shall set" at priority 0, so the latter won't match anymore)
+    # 3. Each rule operates on the progressively transformed text
     for rule in sorted_rules:
         # Skip rules that don't apply to this domain
         if domain not in rule["domains"]:
