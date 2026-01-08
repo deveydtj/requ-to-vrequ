@@ -119,13 +119,15 @@ def test_transform_text_shall_overlay_plural():
 
 
 def test_transform_text_shall_overlay_without_classification():
-    """Test 'shall overlay' transformation without classification tags."""
-    print("\nTesting transform_text for 'shall overlay' without classification...")
+    """Test 'shall overlay' transformation without classification tags for DMGR."""
+    print("\nTesting transform_text for 'shall overlay' without classification (DMGR)...")
     
     req_text = "The system shall overlay the status indicator."
-    result = transform_text(req_text, is_advanced=False, is_setting=False)
+    # Domain selection: is_dmgr=True selects DMGR domain in transform_text
+    # We explicitly set is_dmgr=True to enable overlay transformation (DMGR-only rule)
+    result = transform_text(req_text, is_advanced=False, is_setting=False, is_dmgr=True)
     
-    # Should transform "shall overlay" to "overlays"
+    # Should transform "shall overlay" to "overlays" (DMGR only)
     assert "shall overlay" not in result, f"Expected 'shall overlay' to be replaced, got: {result}"
     assert "overlays" in result, f"Expected 'overlays' in output, got: {result}"
     
@@ -216,6 +218,42 @@ def test_normalize_quote_in_with_overlaying():
         f"Should not insert 'is rendered' when 'overlaying' is present, got: {result}"
     
     print("✓ normalize_quote_in_pattern with 'overlaying' test passed")
+
+
+def test_transform_text_shall_overlay_brdg_no_transform():
+    """Test that transform_text does NOT transform 'shall overlay' for BRDG domain."""
+    print("\nTesting transform_text for 'shall overlay' with BRDG (should NOT transform)...")
+    
+    req_text = "(U) The bridge shall overlay the indicator on the screen."
+    # Explicit is_dmgr=False and is_advanced=True to select BRDG domain
+    result = transform_text(req_text, is_advanced=True, is_setting=False, is_dmgr=False)
+    
+    # Should NOT transform "shall overlay" for BRDG
+    assert "shall overlay" in result, f"Expected 'shall overlay' to remain unchanged for BRDG, got: {result}"
+    assert "overlays" not in result, f"Should not transform to 'overlays' for BRDG, got: {result}"
+    
+    expected = "(U) Verify the bridge shall overlay the indicator on the screen."
+    assert result == expected, f"Expected '{expected}', got: '{result}'"
+    
+    print("✓ BRDG no-transform test passed")
+
+
+def test_transform_text_shall_overlay_other_no_transform():
+    """Test that transform_text does NOT transform 'shall overlay' for OTHER domain."""
+    print("\nTesting transform_text for 'shall overlay' with OTHER (should NOT transform)...")
+    
+    req_text = "(U) The system shall overlay the indicator."
+    # Explicit is_advanced=False and is_dmgr=False to select OTHER domain
+    result = transform_text(req_text, is_advanced=False, is_setting=False, is_dmgr=False)
+    
+    # Should NOT transform "shall overlay" for OTHER domain
+    assert "shall overlay" in result, f"Expected 'shall overlay' to remain unchanged for OTHER, got: {result}"
+    assert "overlays" not in result, f"Should not transform to 'overlays' for OTHER, got: {result}"
+    
+    expected = "(U) Verify the system shall overlay the indicator."
+    assert result == expected, f"Expected '{expected}', got: '{result}'"
+    
+    print("✓ OTHER no-transform test passed")
 
 
 def test_end_to_end_dmgr_shall_overlay():
@@ -358,6 +396,91 @@ def test_end_to_end_dmgr_shall_overlay():
                 pass
 
 
+def test_end_to_end_brdg_shall_overlay_non_standard():
+    """Test that BRDG requirements with 'shall overlay' are flagged as non-standard."""
+    print("\nTesting end-to-end BRDG 'shall overlay' non-standard behavior...")
+    
+    test_yaml = """# Test BRDG with shall overlay (non-standard)
+- Type: Requirement
+  Parent_Req: 
+  ID: REQU.BRDG.TEST.1
+  Name: Set the display mode
+  Text: |
+    (U) The bridge shall overlay the status indicator.
+  Verified_By: 
+  Traced_To: 
+"""
+    
+    # Create temporary input file
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+        input_file = f.name
+        f.write(test_yaml)
+    
+    output_file = None
+    
+    try:
+        # Create temporary output file
+        output_file = input_file.replace('.yaml', '_output.yaml')
+        
+        # Run the script
+        script_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 
+            'generate_verification_yaml.py'
+        )
+        result = subprocess.run(
+            [sys.executable, script_path, input_file, output_file],
+            capture_output=True,
+            text=True
+        )
+        
+        if result.returncode != 0:
+            print(f"Error running script: {result.stderr}")
+            raise AssertionError(f"Script failed: {result.stderr}")
+        
+        # Read and verify output
+        with open(output_file, 'r') as f:
+            output = f.read()
+        
+        lines = output.split('\n')
+        
+        # Find the verification section
+        test1_ver_idx = None
+        for i, line in enumerate(lines):
+            if 'ID: VREQU.BRDG.TEST.1' in line:
+                test1_ver_idx = i
+                break
+        
+        assert test1_ver_idx is not None, "Should create verification for BRDG TEST.1"
+        
+        # Check lines before TEST.1 verification (should have non-standard comment)
+        lines_before_test1 = '\n'.join(lines[max(0, test1_ver_idx-3):test1_ver_idx])
+        assert "# FIX - Non-Standard Text" in lines_before_test1, \
+            "BRDG with 'shall overlay' should be flagged as non-standard text"
+        
+        # Verify that "shall overlay" is NOT transformed
+        test1_section = '\n'.join(lines[test1_ver_idx:test1_ver_idx+20])
+        assert "shall overlay the status indicator" in test1_section, \
+            f"BRDG should NOT transform 'shall overlay', got: {test1_section}"
+        assert "overlays" not in test1_section, \
+            f"BRDG should not contain 'overlays' (no transformation), got: {test1_section}"
+        
+        print("✓ End-to-end BRDG non-standard test passed")
+        
+    finally:
+        # Clean up temporary files
+        try:
+            os.remove(input_file)
+        except OSError:
+            # Ignore errors during best-effort cleanup; leftover temp input files are harmless.
+            pass
+        if output_file is not None:
+            try:
+                os.remove(output_file)
+            except OSError:
+                # Ignore errors during best-effort cleanup; leftover temp output files are harmless.
+                pass
+
+
 def main():
     """Run all tests."""
     print("=" * 60)
@@ -371,11 +494,14 @@ def main():
         test_transform_text_shall_overlay_plural()
         test_transform_text_shall_overlay_without_classification()
         test_transform_text_multiple_verbs()
+        test_transform_text_shall_overlay_brdg_no_transform()
+        test_transform_text_shall_overlay_other_no_transform()
         test_normalize_quote_in_with_shall_overlay()
         test_normalize_quote_in_with_overlays()
         test_normalize_quote_in_with_overlay()
         test_normalize_quote_in_with_overlaying()
         test_end_to_end_dmgr_shall_overlay()
+        test_end_to_end_brdg_shall_overlay_non_standard()
         
         print("\n" + "=" * 60)
         print("All tests passed! ✓")

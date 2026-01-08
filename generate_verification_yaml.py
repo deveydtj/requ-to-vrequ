@@ -141,7 +141,7 @@ MODAL_VERB_RULES = [
     {
         "trigger": "shall overlay",
         "base_verb": "overlay",
-        "domains": {"DMGR", "BRDG", "OTHER"},  # Applies to all domains
+        "domains": {"DMGR"},  # Only applies to DMGR (BRDG requirements will not have overlay)
         "priority": 0,
         "requires_setting": False,
         "standardness_domains": {"DMGR"},  # Only DMGR considers this standard

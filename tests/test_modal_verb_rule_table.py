@@ -118,17 +118,17 @@ def test_rule_table_supports_render_and_overlay():
     """Test that the rule table supports both render and overlay transformations."""
     print("\nTesting rule table supports both render and overlay...")
     
-    # Test render
+    # Test render (works for all domains)
     req_text_render = "(U) The display shall render the UI."
     result_render = transform_text(req_text_render, is_advanced=False, is_setting=False)
     assert "renders the UI" in result_render, f"Expected 'renders the UI', got: {result_render}"
     
-    # Test overlay
+    # Test overlay (DMGR only)
     req_text_overlay = "(U) The display shall overlay the indicator."
-    result_overlay = transform_text(req_text_overlay, is_advanced=False, is_setting=False)
+    result_overlay = transform_text(req_text_overlay, is_advanced=True, is_setting=False, is_dmgr=True)
     assert "overlays the indicator" in result_overlay, f"Expected 'overlays the indicator', got: {result_overlay}"
     
-    # Test both in one requirement
+    # Test both in one requirement (DMGR)
     req_text_both = "(U) The display shall render the UI and shall overlay the warning."
     result_both = transform_text(req_text_both, is_advanced=True, is_setting=False, is_dmgr=True)
     assert "renders the UI" in result_both, f"Expected 'renders the UI', got: {result_both}"
