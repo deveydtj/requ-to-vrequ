@@ -79,6 +79,91 @@ VERIFICATION_TYPES = {
 }
 
 # ---------------------------------------------------------------------------
+# Modal Verb Normalization Rules
+# ---------------------------------------------------------------------------
+#
+# This rule table drives both:
+# 1. is_standard_text() - determines if Text is standard based on domain
+# 2. transform_text() - replaces modal verb phrases with conjugated forms
+#
+# To add a new modal verb normalization:
+# 1. Add an entry to MODAL_VERB_RULES with:
+#    - trigger: the phrase to detect/replace (e.g., "shall overlay")
+#    - base_verb: the base form for conjugation (e.g., "overlay")
+#    - domains: set of domains where this rule applies ({"DMGR", "BRDG", "OTHER"})
+#    - priority: higher numbers are processed first (use for overlapping patterns)
+#    - requires_setting: if True, only applies when is_setting=True
+#    - standardness_domains: optional, set of domains where this triggers standardness
+#      (if None, uses 'domains')
+# 2. Add tests to validate the new normalization
+#
+# Rule processing order:
+# - Rules are sorted by priority (descending), then by trigger length (descending)
+# - This ensures "shall set to" is processed before "shall set"
+#
+# Example: Adding "shall display" for DMGR:
+#   {
+#       "trigger": "shall display",
+#       "base_verb": "display",
+#       "domains": {"DMGR"},
+#       "priority": 0,
+#       "requires_setting": False,
+#   }
+
+MODAL_VERB_RULES = [
+    # High priority: "shall set to" must be processed before "shall set"
+    {
+        "trigger": "shall set to",
+        "base_verb": "set",
+        "domains": {"DMGR"},
+        "priority": 10,
+        "requires_setting": False,
+        "standardness_domains": {"DMGR"},  # Only DMGR considers this standard
+    },
+    {
+        "trigger": "shall set to",
+        "base_verb": "set",
+        "domains": {"BRDG"},
+        "priority": 10,
+        "requires_setting": True,  # BRDG only when setting semantics
+        "standardness_domains": {"BRDG"},  # Only BRDG considers this standard
+    },
+    # Standard priority: main modal verbs
+    {
+        "trigger": "shall render",
+        "base_verb": "render",
+        "domains": {"DMGR", "BRDG", "OTHER"},  # Applies to all domains
+        "priority": 0,
+        "requires_setting": False,
+        "standardness_domains": {"DMGR", "BRDG", "OTHER"},  # All domains consider this standard
+    },
+    {
+        "trigger": "shall overlay",
+        "base_verb": "overlay",
+        "domains": {"DMGR", "BRDG", "OTHER"},  # Applies to all domains
+        "priority": 0,
+        "requires_setting": False,
+        "standardness_domains": {"DMGR"},  # Only DMGR considers this standard
+    },
+    {
+        "trigger": "shall set",
+        "base_verb": "set",
+        "domains": {"DMGR"},
+        "priority": 0,
+        "requires_setting": False,
+        "standardness_domains": {"DMGR"},  # Only DMGR considers this standard
+    },
+    {
+        "trigger": "shall set",
+        "base_verb": "set",
+        "domains": {"BRDG"},
+        "priority": 0,
+        "requires_setting": True,  # BRDG only when setting semantics
+        "standardness_domains": {"BRDG"},  # Only BRDG considers this standard
+    },
+]
+
+# ---------------------------------------------------------------------------
 # Item Detection Helpers
 # ---------------------------------------------------------------------------
 
@@ -849,11 +934,12 @@ def transform_text(req_text: str, is_advanced: bool, is_setting: bool, is_dmgr: 
     - Plurality is determined from the remainder (ignoring classification prefix).
 
     Verb normalization (applied to the post-rewrite text for consistency):
-    - Replace 'shall render' with 'render/renders' depending on subject plurality.
-    - Replace 'shall overlay' with 'overlay/overlays' depending on subject plurality.
-    - For DMGR domain, replace 'shall set' with 'set/sets' depending on subject plurality.
-    - For BRDG domain with setting semantics (Name contains 'Set'), replace 'shall set'
-      with 'set/sets' depending on subject plurality.
+    - Uses MODAL_VERB_RULES to apply domain-specific transformations
+    - Rules are processed in priority order (high to low), then by trigger length (long to short)
+    - This ensures "shall set to" is processed before "shall set" to avoid duplication
+    - DMGR domain: transforms all rules where domain includes "DMGR"
+    - BRDG domain: transforms rules where domain includes "BRDG" and requirements are met
+      (e.g., requires_setting=True only applies when is_setting=True)
     
     All replacement checks and operations are performed on the rewritten text (after
     first-line normalization) to ensure consistency and avoid edge cases where
@@ -868,10 +954,6 @@ def transform_text(req_text: str, is_advanced: bool, is_setting: bool, is_dmgr: 
     # Split out any leading classification prefix, and determine subject plurality from remainder
     class_prefix, remainder = split_leading_classification(first)
     subject_phrase = extract_subject_phrase(remainder)
-    be = choose_be_verb(subject_phrase)
-    render_present = choose_present_verb("render", subject_phrase)
-    overlay_present = choose_present_verb("overlay", subject_phrase)
-    set_present = choose_present_verb("set", subject_phrase)
 
     # Build the rewritten first line
     # Normalize first-word article capitalization after 'Verify'
@@ -894,32 +976,50 @@ def transform_text(req_text: str, is_advanced: bool, is_setting: bool, is_dmgr: 
 
     joined = "\n".join(lines)
 
-    # Normalize 'shall render' -> 'render'/'renders' (active voice)
-    # Check the post-rewrite text (joined) for consistency
-    if "shall render" in joined:
-        joined = joined.replace("shall render", render_present)
-
-    # Normalize 'shall overlay' -> 'overlay'/'overlays' (active voice)
-    # Check the post-rewrite text (joined) for consistency
-    if "shall overlay" in joined:
-        joined = joined.replace("shall overlay", overlay_present)
-
-    # DMGR domain: always transform "shall set" (like "shall render")
-    # BRDG domain: only transform "shall set" when is_setting=True (Name contains "Set")
+    # Determine the current domain for rule filtering
+    # is_dmgr is explicitly passed; is_advanced indicates BRDG or DMGR
     if is_dmgr:
-        # Handle 'shall set to' first to avoid 'to to' duplication
-        if "shall set to" in joined:
-            joined = joined.replace("shall set to", f"{set_present} to")
-        elif "shall set" in joined:
-            joined = joined.replace("shall set", set_present)
-    elif is_advanced and is_setting:
-        # BRDG with setting semantics
-        # Handle 'shall set to' first to avoid 'to to' duplication
-        # Check the post-rewrite text (joined) for consistency
-        if "shall set to" in joined:
-            joined = joined.replace("shall set to", f"{set_present} to")
-        elif "shall set" in joined:
-            joined = joined.replace("shall set", set_present)
+        domain = "DMGR"
+    elif is_advanced:
+        domain = "BRDG"
+    else:
+        domain = "OTHER"
+
+    # Apply modal verb normalizations using the rule table
+    # Sort rules by priority (descending) then by trigger length (descending)
+    # This ensures "shall set to" is processed before "shall set"
+    sorted_rules = sorted(
+        MODAL_VERB_RULES,
+        key=lambda r: (r["priority"], len(r["trigger"])),
+        reverse=True
+    )
+    
+    for rule in sorted_rules:
+        # Skip rules that don't apply to this domain
+        if domain not in rule["domains"]:
+            continue
+        
+        # Skip rules that require setting semantics when not present
+        if rule["requires_setting"] and not is_setting:
+            continue
+        
+        # Check if the trigger phrase exists in the text
+        trigger = rule["trigger"]
+        if trigger in joined:
+            # Conjugate the base verb based on subject plurality
+            base_verb = rule["base_verb"]
+            conjugated = choose_present_verb(base_verb, subject_phrase)
+            
+            # Special handling for "shall X to" patterns: replace with "X to" (not "X to to")
+            if trigger.endswith(" to"):
+                # For "shall set to" -> "sets to" or "set to"
+                replacement = f"{conjugated} to"
+            else:
+                # For "shall render" -> "renders" or "render"
+                replacement = conjugated
+            
+            # Apply the replacement
+            joined = joined.replace(trigger, replacement)
 
     # Apply verification-specific normalization (e.g., '" in' pattern fix)
     joined = normalize_quote_in_pattern(joined)
@@ -1259,9 +1359,12 @@ def is_standard_text(req_text: str, domain: str) -> bool:
     """
     Check if a Requirement Text follows domain-specific standard formatting.
     
-    Domain-specific standards:
+    Uses MODAL_VERB_RULES to determine standardness based on domain.
+    A text is standard if it contains any trigger phrase allowed for the domain.
+    
+    Domain-specific standards (derived from MODAL_VERB_RULES):
     - DMGR: Text should contain "shall render", "shall set", or "shall overlay"
-    - BRDG: Text should contain "shall set"
+    - BRDG: Text should contain "shall set" or "shall render"
     - OTHER: No specific Text standard required, but text must be non-empty
     
     Empty text is always considered non-standard regardless of domain.
@@ -1276,13 +1379,20 @@ def is_standard_text(req_text: str, domain: str) -> bool:
     if not req_text:
         return False
     
-    if domain == "DMGR":
-        return "shall render" in req_text or "shall set" in req_text or "shall overlay" in req_text
-    elif domain == "BRDG":
-        return "shall set" in req_text
-    else:
-        # OTHER domain has no specific Text standard, but text must be non-empty
+    # OTHER domain has no specific Text standard (any non-empty text is standard)
+    if domain == "OTHER":
         return True
+    
+    # Check if text contains any trigger phrase that contributes to standardness for this domain
+    # Note: We check for trigger presence regardless of requires_setting flag
+    # because is_standard_text only checks Text, not Name (setting semantics)
+    for rule in MODAL_VERB_RULES:
+        # Use standardness_domains if specified, otherwise use domains
+        standardness_domains = rule.get("standardness_domains", rule["domains"])
+        if domain in standardness_domains and rule["trigger"] in req_text:
+            return True
+    
+    return False
 
 
 def has_brdg_render_issue(ver_name: str, ver_text: str) -> bool:
