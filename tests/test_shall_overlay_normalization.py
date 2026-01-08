@@ -471,11 +471,13 @@ def test_end_to_end_brdg_shall_overlay_non_standard():
         try:
             os.remove(input_file)
         except OSError:
+            # Ignore errors during best-effort cleanup; leftover temp input files are harmless.
             pass
         if output_file is not None:
             try:
                 os.remove(output_file)
             except OSError:
+                # Ignore errors during best-effort cleanup; leftover temp output files are harmless.
                 pass
 
 
