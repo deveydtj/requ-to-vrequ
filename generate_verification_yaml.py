@@ -888,22 +888,15 @@ def normalize_quote_in_pattern(text: str) -> str:
                     # Passive voice: allow insertion
                     pass
                 else:
-                    # Same logic as render
-                    verb_index = overlay_match.start()
-                    is_context_at_text_start = (context_start == 0)
-                    is_at_true_start = is_context_at_text_start and verb_index == 0
-                    if is_at_true_start and context_before[verb_index] == 'O':
-                        # Command-form "Overlay" at the true start; don't skip
-                        pass
-                    elif is_at_true_start:
-                        # Lowercase "overlay/overlays" at the true start: active voice
-                        skip_insertion = True
-                    elif not is_context_at_text_start:
-                        # Context window truncated; be conservative
-                        pass
-                    else:
-                        # Not at start but context starts at 0: active voice
-                        skip_insertion = True
+                    # Policy: "we should not allow any overlay insertion with \" in\""
+                    # This means ALL overlay forms (including command-form "Overlay")
+                    # should block insertion, unlike render where command-form allows insertion.
+                    # 
+                    # For overlay: skip insertion in all non-passive cases
+                    # - Active voice: "system overlays label \"X\" in Y" → skip
+                    # - Command-form: "Overlay label \"X\" in Y" → skip (unlike render)
+                    # - Gerund: handled separately by Pattern 3
+                    skip_insertion = True
             # Pattern 3: Gerund "rendering" or "overlaying" (typically active voice)
             if re.search(r'\b(rendering|overlaying)\b', context_before, re.IGNORECASE):
                 skip_insertion = True
