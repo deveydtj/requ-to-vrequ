@@ -348,7 +348,6 @@ def test_end_to_end_dmgr_shall_overlay():
         try:
             os.remove(input_file)
         except OSError:
-        except OSError:
             # Ignore cleanup errors (e.g., file already deleted or not found)
             pass
         if output_file is not None:
