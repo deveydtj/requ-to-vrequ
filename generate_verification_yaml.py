@@ -148,6 +148,47 @@ def parse_first_line_kv(line: str) -> Optional[Tuple[str, str]]:
     key, value = rest.split(":", 1)
     return (key.strip(), value.strip())
 
+
+def is_block_scalar_header(line: str) -> Tuple[bool, int]:
+    """
+    Check if a line is a block scalar header (e.g., "Key: |", "Key: |-", "Key: |+").
+    
+    Args:
+        line: The line to check
+    
+    Returns:
+        (is_header, indent) tuple where:
+        - is_header: True if this is a block scalar header
+        - indent: The indentation level of the key (for tracking block end)
+    
+    Examples:
+        >>> is_block_scalar_header("  Text: |")
+        (True, 2)
+        >>> is_block_scalar_header("  Name: |-")
+        (True, 2)
+        >>> is_block_scalar_header("  ID: REQU.1")
+        (False, 0)
+    """
+    stripped = line.lstrip()
+    if ":" not in stripped:
+        return (False, 0)
+    
+    # Calculate indentation
+    indent = len(line) - len(stripped)
+    
+    # Split on first colon
+    parts = stripped.split(":", 1)
+    if len(parts) != 2:
+        return (False, 0)
+    
+    value = parts[1].lstrip()
+    
+    # Check if value is a block scalar indicator: |, |-, |+
+    if value in ("|", "|-", "|+"):
+        return (True, indent)
+    
+    return (False, 0)
+
 # ---------------------------------------------------------------------------
 # Parsing
 # ---------------------------------------------------------------------------
@@ -939,6 +980,12 @@ def apply_id_sequence_patch(original_text: str, id_map: Dict[str, str]) -> str:
     - Does NOT create standalone items for comments appearing between structured items
       (those are stored in the item's _order field instead)
     
+    Block scalar awareness:
+    - Lines starting with "- " inside block scalars (e.g., Text: |) are NOT treated
+      as new items, preventing item_index drift
+    - Block scalars are detected by headers like "Key: |", "Key: |-", "Key: |+"
+    - Exit block scalar when indentation drops to header level or below
+    
     Args:
         original_text: The original file content as a string
         id_map: Mapping from "ORIGINAL_ID@INDEX" to sequenced IDs
@@ -960,7 +1007,31 @@ def apply_id_sequence_patch(original_text: str, id_map: Dict[str, str]) -> str:
     # inter-item comments (which are stored in the previous item's _order)
     seen_structured_item = False
     
+    # Track block scalar state to avoid counting "- " lines inside blocks as items
+    in_block_scalar = False
+    block_header_indent = 0
+    
     for line in lines:
+        # If we're inside a block scalar, check if we should exit
+        if in_block_scalar:
+            # Exit block scalar when we see a non-empty line with indentation
+            # less than or equal to the block header's indentation
+            stripped = line.lstrip()
+            if stripped:  # Non-empty line
+                current_indent = len(line) - len(stripped)
+                if current_indent <= block_header_indent:
+                    # We've exited the block scalar
+                    in_block_scalar = False
+                    # Continue processing this line normally (fall through)
+                else:
+                    # Still inside block scalar, just append and continue
+                    result.append(line)
+                    continue
+            else:
+                # Empty line inside block scalar, preserve it
+                result.append(line)
+                continue
+        
         # Detect start of new item (including standalone comments)
         stripped = line.lstrip()
         
@@ -970,6 +1041,14 @@ def apply_id_sequence_patch(original_text: str, id_map: Dict[str, str]) -> str:
         # Each preamble comment line is treated as a separate item by parse_items()
         if not seen_structured_item and stripped.startswith("#"):
             item_index += 1
+            result.append(line)
+            continue
+        
+        # Check if this line is a block scalar header
+        is_header, header_indent = is_block_scalar_header(line)
+        if is_header:
+            in_block_scalar = True
+            block_header_indent = header_indent
             result.append(line)
             continue
         
