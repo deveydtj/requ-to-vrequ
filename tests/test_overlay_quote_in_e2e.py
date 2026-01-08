@@ -92,7 +92,7 @@ def test_end_to_end_overlay_no_insertion():
         # Test 1: Overlay context should NOT insert "is rendered"
         ver1 = verifications[0]
         assert ver1['ID'] == 'VREQU.DMGR.TEST.1', f"Expected VREQU.DMGR.TEST.1, got {ver1['ID']}"
-        # The transformation should convert "overlays" to active voice but NOT insert "is rendered in"
+        # The transformation preserves "overlays" in active voice and does NOT insert "is rendered in"
         # Expected: "Verify the system overlays label \"fruit\" in white"
         assert '"fruit" in white' in ver1['Text'], \
             f"Overlay context: should preserve '\" in white' without insertion. Got: {ver1['Text']}"

@@ -892,10 +892,19 @@ def normalize_quote_in_pattern(text: str) -> str:
                     # This means ALL overlay forms (including command-form "Overlay")
                     # should block insertion, unlike render where command-form allows insertion.
                     # 
+                    # Trade-off: This implementation is intentionally aggressive within the
+                    # bounded 100-char context window. If "overlay/overlays" appears anywhere
+                    # in that window before the quoted label, we block insertion, even if:
+                    # - The overlay verb has a different object ("overlays background... label X")
+                    # - The overlay appears in a subordinate clause
+                    # - The context is truncated (context_start > 0)
+                    # 
+                    # This trades precision for policy compliance. In realistic requirements text,
+                    # if "overlay" appears within 100 chars before a label with '" in', they're
+                    # usually related. False positives (blocking when unrelated) are preferred
+                    # over false negatives (inserting when overlay governs) per the policy.
+                    # 
                     # For overlay: skip insertion in all non-passive cases
-                    # - Active voice: "system overlays label \"X\" in Y" → skip
-                    # - Command-form: "Overlay label \"X\" in Y" → skip (unlike render)
-                    # - Gerund: handled separately by Pattern 3
                     skip_insertion = True
             # Pattern 3: Gerund "rendering" or "overlaying" (typically active voice)
             if re.search(r'\b(rendering|overlaying)\b', context_before, re.IGNORECASE):
