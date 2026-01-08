@@ -123,7 +123,7 @@ def test_transform_text_shall_overlay_without_classification():
     print("\nTesting transform_text for 'shall overlay' without classification (DMGR)...")
     
     req_text = "The system shall overlay the status indicator."
-    # Domain selection: is_dmgr=True → domain = "DMGR" (line 986 in transform_text)
+    # Domain selection: is_dmgr=True selects DMGR domain in transform_text
     # We explicitly set is_dmgr=True to enable overlay transformation (DMGR-only rule)
     result = transform_text(req_text, is_advanced=False, is_setting=False, is_dmgr=True)
     
@@ -225,7 +225,7 @@ def test_transform_text_shall_overlay_brdg_no_transform():
     print("\nTesting transform_text for 'shall overlay' with BRDG (should NOT transform)...")
     
     req_text = "(U) The bridge shall overlay the indicator on the screen."
-    # Explicit is_dmgr=False to select BRDG domain (with is_advanced=True)
+    # Explicit is_dmgr=False and is_advanced=True to select BRDG domain
     result = transform_text(req_text, is_advanced=True, is_setting=False, is_dmgr=False)
     
     # Should NOT transform "shall overlay" for BRDG
