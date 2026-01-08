@@ -123,7 +123,7 @@ def test_transform_text_shall_overlay_without_classification():
     print("\nTesting transform_text for 'shall overlay' without classification (DMGR)...")
     
     req_text = "The system shall overlay the status indicator."
-    # Note: is_advanced is ignored when is_dmgr=True; domain is determined as DMGR
+    # Domain selection: is_dmgr=True → domain = "DMGR" (line 986 in transform_text)
     # We explicitly set is_dmgr=True to enable overlay transformation (DMGR-only rule)
     result = transform_text(req_text, is_advanced=False, is_setting=False, is_dmgr=True)
     
