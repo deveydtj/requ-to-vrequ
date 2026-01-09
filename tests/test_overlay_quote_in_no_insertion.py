@@ -165,6 +165,49 @@ def test_passive_voice_allows_insertion():
     print("✓ All passive voice tests passed")
 
 
+def test_render_vs_overlay_command_form_difference():
+    """Test that command-form 'Render' allows insertion but 'Overlay' blocks it.
+    
+    This validates the key behavioral difference documented in the PR:
+    - Command-form "Render" at start: allows insertion (existing behavior)
+    - Command-form "Overlay" at start: blocks insertion (new policy)
+    """
+    print("\nTesting Render vs Overlay command-form difference...")
+    
+    test_cases = [
+        # Command-form "Render" should ALLOW insertion
+        (
+            "Render command-form",
+            'Render label "fruit" in white',
+            False  # Should NOT block (allows insertion)
+        ),
+        # Command-form "Overlay" should BLOCK insertion
+        (
+            "Overlay command-form",
+            'Overlay label "fruit" in white',
+            True  # Should block (no insertion)
+        ),
+    ]
+    
+    for name, input_text, should_block in test_cases:
+        result = normalize_quote_in_pattern(input_text)
+        blocks_insertion = '"fruit" is rendered in white' not in result
+        allows_insertion = '"fruit" is rendered in white' in result
+        
+        if blocks_insertion == should_block:
+            status = "blocks" if should_block else "allows"
+            print(f"  ✓ {name} ({status} insertion)")
+        else:
+            print(f"  ✗ {name}")
+            print(f"    Input:    {input_text}")
+            print(f"    Output:   {result}")
+            expected = "Block" if should_block else "Allow"
+            print(f"    Expected: {expected} insertion")
+            assert False, f"Test failed: {name}"
+    
+    print("✓ Command-form difference validated")
+
+
 def test_edge_cases_documented_trade_offs():
     """Test edge cases documented in implementation comments.
     
@@ -225,6 +268,7 @@ def main():
         test_render_contexts_still_block_insertion()
         test_already_has_is_rendered()
         test_passive_voice_allows_insertion()
+        test_render_vs_overlay_command_form_difference()
         test_edge_cases_documented_trade_offs()
         
         print("\n" + "=" * 60)
