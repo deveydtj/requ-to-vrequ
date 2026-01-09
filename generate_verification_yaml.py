@@ -888,22 +888,24 @@ def normalize_quote_in_pattern(text: str) -> str:
                     # Passive voice: allow insertion
                     pass
                 else:
-                    # Same logic as render
-                    verb_index = overlay_match.start()
-                    is_context_at_text_start = (context_start == 0)
-                    is_at_true_start = is_context_at_text_start and verb_index == 0
-                    if is_at_true_start and context_before[verb_index] == 'O':
-                        # Command-form "Overlay" at the true start; don't skip
-                        pass
-                    elif is_at_true_start:
-                        # Lowercase "overlay/overlays" at the true start: active voice
-                        skip_insertion = True
-                    elif not is_context_at_text_start:
-                        # Context window truncated; be conservative
-                        pass
-                    else:
-                        # Not at start but context starts at 0: active voice
-                        skip_insertion = True
+                    # Policy: "we should not allow any overlay insertion with \" in\""
+                    # This means ALL overlay forms (including command-form "Overlay")
+                    # should block insertion, unlike render where command-form allows insertion.
+                    # 
+                    # Trade-off: This implementation is intentionally aggressive within the
+                    # bounded 100-char context window. If "overlay/overlays" appears anywhere
+                    # in that window before the quoted label, we block insertion, even if:
+                    # - The overlay verb has a different object ("overlays background... label X")
+                    # - The overlay appears in a subordinate clause
+                    # - The context is truncated (context_start > 0)
+                    # 
+                    # This trades precision for policy compliance. In realistic requirements text,
+                    # if "overlay" appears within 100 chars before a label with '" in', they're
+                    # usually related. False positives (blocking when unrelated) are preferred
+                    # over false negatives (inserting when overlay governs) per the policy.
+                    # 
+                    # For overlay: skip insertion in all non-passive cases
+                    skip_insertion = True
             # Pattern 3: Gerund "rendering" or "overlaying" (typically active voice)
             if re.search(r'\b(rendering|overlaying)\b', context_before, re.IGNORECASE):
                 skip_insertion = True
