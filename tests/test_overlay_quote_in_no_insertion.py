@@ -192,7 +192,6 @@ def test_render_vs_overlay_command_form_difference():
     for name, input_text, should_block in test_cases:
         result = normalize_quote_in_pattern(input_text)
         blocks_insertion = '"fruit" is rendered in white' not in result
-        allows_insertion = '"fruit" is rendered in white' in result
         
         if blocks_insertion == should_block:
             status = "blocks" if should_block else "allows"
