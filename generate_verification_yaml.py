@@ -603,8 +603,6 @@ def choose_present_verb(base_verb: str, phrase: str) -> str:
     plural = is_plural_subject_phrase(phrase)
     if base_verb == "render":
         return "render" if plural else "renders"
-    elif base_verb == "overlay":
-        return "overlay" if plural else "overlays"
     # Fallback: default singular adds 's'
     return base_verb if plural else (base_verb + "s")
 
