@@ -64,7 +64,7 @@ from typing import List, Dict, Optional, Tuple
 # Base key order for output. Additional keys discovered in the file will be
 # appended after these in alphabetical order.
 BASE_KEY_ORDER = [
-    "Type", "Parent_Req", "ID", "Name", "Text", "Verified_By", "Traced_To"
+    "Type", "Parent_Req", "ID", "Name", "Text", "Verified_By", "Traced_To", "Verification_Method"
 ]
 
 # Compiled regex pattern for BRDG render issue detection
@@ -1563,6 +1563,9 @@ def generate_verification_items(items: List[Dict[str, str]]) -> List[Dict[str, s
         # Copy Traced_To exactly if present (scalar-only support)
         if "Traced_To" in item:
             ver_item["Traced_To"] = item["Traced_To"]
+        
+        # Set Verification_Method to Test for newly generated Verification items
+        ver_item["Verification_Method"] = "Test"
 
         # Preserve the fact that Text was a block scalar so we can rewrite it
         if "_Text_block" in item:
@@ -1605,6 +1608,8 @@ def build_global_key_order(items: List[Dict[str, str]]) -> List[str]:
     - Start with BASE_KEY_ORDER
     - Append any additional keys found across all items (except
       internal keys starting with '_'), sorted alphabetically.
+    - Ensure Verification_Method is always positioned as the final key
+      if it exists in the discovered keys.
     """
     all_keys = set()
     for item in items:
@@ -1615,6 +1620,12 @@ def build_global_key_order(items: List[Dict[str, str]]) -> List[str]:
     key_order: List[str] = BASE_KEY_ORDER.copy()
     extra_keys = sorted(k for k in all_keys if k not in key_order)
     key_order.extend(extra_keys)
+    
+    # Ensure Verification_Method is always positioned last if present
+    if "Verification_Method" in key_order:
+        key_order.remove("Verification_Method")
+        key_order.append("Verification_Method")
+    
     return key_order
 
 
