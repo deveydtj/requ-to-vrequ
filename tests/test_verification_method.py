@@ -274,9 +274,9 @@ def test_non_duplication_preserved(temp_yaml_file):
     # (since the script preserves existing items as-is via patching)
     existing_verification = verifications[0]
     
-    # Note: The script applies patches to the original text, so existing items
-    # are preserved. Only newly generated items get Verification_Method.
-    # This is the expected behavior based on the issue description.
+    # Assert that existing Verification does NOT have Verification_Method field added
+    assert "Verification_Method" not in existing_verification, \
+        "Existing Verification should NOT have Verification_Method field added"
     
     # Cleanup
     if os.path.exists(output_path):
